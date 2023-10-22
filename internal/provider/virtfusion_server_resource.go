@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"github.com/google/uuid"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -18,7 +18,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -36,24 +35,33 @@ type VirtfusionServerResource struct {
 
 // VirtfusionServerResourceModel describes the resource data model.
 type VirtfusionServerResourceModel struct {
-	PackageId            types.Int64  `tfsdk:"package_id"`
-	UserId               types.Int64  `tfsdk:"user_id"`
-	HypervisorId         types.Int64  `tfsdk:"hypervisor_id"`
-	Ipv4                 types.Int64  `tfsdk:"ipv4"`
-	Storage              types.Int64  `tfsdk:"storage"`
-	Memory               types.Int64  `tfsdk:"memory"`
-	Cores                types.Int64  `tfsdk:"cores"`
-	Traffic              types.Int64  `tfsdk:"traffic"`
-	InboundNetworkSpeed  types.Int64  `tfsdk:"inbound_network_speed"`
-	OutboundNetworkSpeed types.Int64  `tfsdk:"outbound_network_speed"`
-	StorageProfile       types.Int64  `tfsdk:"storage_profile"`
-	NetworkProfile       types.Int64  `tfsdk:"network_profile"`
-	Name                 types.String `tfsdk:"name"`
-	Id                   types.Int64  `tfsdk:"id"`
+	PackageId            *int64       `tfsdk:"package_id" json:"packageId,omitempty"`
+	UserId               *int64       `tfsdk:"user_id" json:"userId,omitempty"`
+	HypervisorId         *int64       `tfsdk:"hypervisor_id" json:"hypervisorId,omitempty"`
+	Ipv4                 *int64       `tfsdk:"ipv4" json:"ipv4,omitempty"`
+	Storage              *int64       `tfsdk:"storage" json:"storage,omitempty"`
+	Memory               *int64       `tfsdk:"memory" json:"memory,omitempty"`
+	Cores                *int64       `tfsdk:"cores" json:"cpuCores,omitempty"`
+	Traffic              *int64       `tfsdk:"traffic" json:"traffic,omitempty"`
+	InboundNetworkSpeed  *int64       `tfsdk:"inbound_network_speed" json:"networkSpeedInbound,omitempty"`
+	OutboundNetworkSpeed *int64       `tfsdk:"outbound_network_speed" json:"networkSpeedOutbound,omitempty"`
+	StorageProfile       *int64       `tfsdk:"storage_profile" json:"storageProfile,omitempty"`
+	NetworkProfile       *int64       `tfsdk:"network_profile" json:"networkProfile,omitempty"`
+	Name                 types.String `tfsdk:"name" json:"name,omitempty"`
+	Id                   types.Int64  `tfsdk:"id" json:"id"`
+	Build                struct {
+		Name     types.String  `tfsdk:"name" json:"name"`
+		Hostname types.String  `tfsdk:"hostname" json:"hostname"`
+		Osid     types.Int64   `tfsdk:"osid" json:"operatingSystemId"`
+		Vnc      types.Bool    `tfsdk:"vnc" json:"vnc"`
+		Ipv6     types.Bool    `tfsdk:"ipv6" json:"ipv6"`
+		SshKeys  []types.Int64 `tfsdk:"ssh_keys" json:"sshKeys"`
+		Email    types.Bool    `tfsdk:"email" json:"email"`
+	}
 }
 
 func (r *VirtfusionServerResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_server_example"
+	resp.TypeName = req.ProviderTypeName + "_server"
 }
 
 func GenerateRandomName() string {
@@ -72,7 +80,7 @@ func (r *VirtfusionServerResource) Schema(ctx context.Context, req resource.Sche
 				MarkdownDescription: "Server name. If omitted, a random UUID will be generated.",
 				Optional:            true,
 				Computed:            true,
-				Default:             stringdefault.StaticString(GenerateRandomName()),
+				//Default:  stringdefault.StaticString(GenerateRandomName()),
 			},
 			"package_id": schema.Int64Attribute{
 				MarkdownDescription: "Package ID",
@@ -83,11 +91,11 @@ func (r *VirtfusionServerResource) Schema(ctx context.Context, req resource.Sche
 				Required:            true,
 			},
 			"hypervisor_id": schema.Int64Attribute{
-				MarkdownDescription: "Hypervisor ID",
+				MarkdownDescription: "Hypervisor Group ID",
 				Required:            true,
 			},
 			"ipv4": schema.Int64Attribute{
-				MarkdownDescription: "How many IPv4 addresses to allocate. Default is 1.",
+				MarkdownDescription: "IPv4 Addresses to assign. Omit to use the default of 1 IPv4.",
 				Optional:            true,
 				Computed:            true,
 				Default:             int64default.StaticInt64(1),
@@ -222,6 +230,36 @@ func (r *VirtfusionServerResource) Create(ctx context.Context, req resource.Crea
 		}
 	}(httpResponse.Body)
 
+	if httpResponse.StatusCode == 422 {
+		responseBody, err := ioutil.ReadAll(httpResponse.Body)
+		if err != nil {
+			resp.Diagnostics.AddError(
+				"Failed to Read Response",
+				fmt.Sprintf("Failed to read HTTP response body: %s", err.Error()),
+			)
+			return
+		}
+
+		var errorResponse map[string]interface{}
+		err = json.Unmarshal(responseBody, &errorResponse)
+		if err != nil {
+			resp.Diagnostics.AddError(
+				"Failed to Parse Error Response",
+				fmt.Sprintf("Failed to parse HTTP response body: %s", err.Error()),
+			)
+			return
+		}
+
+		if errors, exists := errorResponse["errors"]; exists {
+			resp.Diagnostics.AddError(
+				"Server Returned Errors",
+				fmt.Sprintf("Errors from server: %v", errors),
+			)
+		}
+
+		return
+	}
+
 	if httpResponse.StatusCode != 201 {
 		resp.Diagnostics.AddError(
 			"Failed to Create Resource",
@@ -241,10 +279,12 @@ func (r *VirtfusionServerResource) Create(ctx context.Context, req resource.Crea
 
 	type ResponseData struct {
 		Data struct {
-			Id   types.Int64  `json:"id"`
-			Uuid types.String `json:"uuid"`
+			Id   int64  `json:"id"`
+			Uuid string `json:"uuid"`
+			Name string `json:"name"`
 		} `json:"data"`
 	}
+
 	var responseData ResponseData
 
 	// Unmarshal the JSON response
@@ -258,15 +298,9 @@ func (r *VirtfusionServerResource) Create(ctx context.Context, req resource.Crea
 	}
 
 	// Update the Terraform state with the server ID
-	data.Id = types.Int64(responseData.Data.Id)
+	data.Id = types.Int64Value(responseData.Data.Id)
+	data.Name = types.StringValue(responseData.Data.Name)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
-
-	// Write logs using the tflog package
-	// Documentation: https://terraform.io/plugin/log
-	//tflog.Trace(ctx, "created a resource")
-
-	// Save data into Terraform state
-	//resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
 func (r *VirtfusionServerResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -323,13 +357,36 @@ func (r *VirtfusionServerResource) Delete(ctx context.Context, req resource.Dele
 		return
 	}
 
-	// If applicable, this is a great opportunity to initialize any necessary
-	// provider client data and make a call using it.
-	// httpResp, err := r.client.Do(httpReq)
-	// if err != nil {
-	//     resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to delete example, got error: %s", err))
-	//     return
-	// }
+	httpReq, err := http.NewRequest("DELETE", fmt.Sprintf("/servers/%d?delay=0", data.Id.ValueInt64()), bytes.NewBuffer([]byte{}))
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Failed to Create Request",
+			fmt.Sprintf("Failed to create a new HTTP request: %s", err.Error()),
+		)
+		return
+	}
+
+	// Add any additional headers (Content-Type, etc.)
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	httpResponse, err := r.client.Do(httpReq)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Failed to Execute Request",
+			fmt.Sprintf("Failed to execute HTTP request: %s", err.Error()),
+		)
+		return
+	}
+
+	if httpResponse.StatusCode != 204 {
+		resp.Diagnostics.AddError(
+			"Failed to Delete Resource",
+			fmt.Sprintf("Failed to delete resource: %s", httpResponse.Status),
+		)
+		return
+	}
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
 func (r *VirtfusionServerResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {

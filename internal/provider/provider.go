@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path"
 )
 
 // Ensure ScaffoldingProvider satisfies various provider interfaces.
@@ -98,7 +99,7 @@ func (p *ScaffoldingProvider) Configure(ctx context.Context, req provider.Config
 
 	customTransport := &CustomTransport{
 		Transport: http.DefaultTransport,
-		BaseURL:   &url.URL{Scheme: "https", Host: endpoint + "/api/v1"},
+		BaseURL:   &url.URL{Scheme: "https", Host: endpoint, Path: "/api/v1"},
 		Token:     apiToken,
 	}
 
@@ -133,8 +134,7 @@ func (c *CustomTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	req.Header.Add("Authorization", "Bearer "+c.Token)
 	req.URL.Scheme = c.BaseURL.Scheme
 	req.URL.Host = c.BaseURL.Host
-	req.URL.Path = c.BaseURL.Path + req.URL.Path
-
+	req.URL.Path = path.Join(c.BaseURL.Path, req.URL.Path)
 	return c.Transport.RoundTrip(req)
 }
 
