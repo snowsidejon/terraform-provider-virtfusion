@@ -8,7 +8,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/google/uuid"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"io"
@@ -35,39 +34,23 @@ type VirtfusionServerResource struct {
 
 // VirtfusionServerResourceModel describes the resource data model.
 type VirtfusionServerResourceModel struct {
-	PackageId            *int64       `tfsdk:"package_id" json:"packageId,omitempty"`
-	UserId               *int64       `tfsdk:"user_id" json:"userId,omitempty"`
-	HypervisorId         *int64       `tfsdk:"hypervisor_id" json:"hypervisorId,omitempty"`
-	Ipv4                 *int64       `tfsdk:"ipv4" json:"ipv4,omitempty"`
-	Storage              *int64       `tfsdk:"storage" json:"storage,omitempty"`
-	Memory               *int64       `tfsdk:"memory" json:"memory,omitempty"`
-	Cores                *int64       `tfsdk:"cores" json:"cpuCores,omitempty"`
-	Traffic              *int64       `tfsdk:"traffic" json:"traffic,omitempty"`
-	InboundNetworkSpeed  *int64       `tfsdk:"inbound_network_speed" json:"networkSpeedInbound,omitempty"`
-	OutboundNetworkSpeed *int64       `tfsdk:"outbound_network_speed" json:"networkSpeedOutbound,omitempty"`
-	StorageProfile       *int64       `tfsdk:"storage_profile" json:"storageProfile,omitempty"`
-	NetworkProfile       *int64       `tfsdk:"network_profile" json:"networkProfile,omitempty"`
-	Name                 types.String `tfsdk:"name" json:"name,omitempty"`
-	Id                   types.Int64  `tfsdk:"id" json:"id"`
-	Build                struct {
-		Name     types.String  `tfsdk:"name" json:"name"`
-		Hostname types.String  `tfsdk:"hostname" json:"hostname"`
-		Osid     types.Int64   `tfsdk:"osid" json:"operatingSystemId"`
-		Vnc      types.Bool    `tfsdk:"vnc" json:"vnc"`
-		Ipv6     types.Bool    `tfsdk:"ipv6" json:"ipv6"`
-		SshKeys  []types.Int64 `tfsdk:"ssh_keys" json:"sshKeys"`
-		Email    types.Bool    `tfsdk:"email" json:"email"`
-	}
+	PackageId            *int64      `tfsdk:"package_id" json:"packageId,omitempty"`
+	UserId               *int64      `tfsdk:"user_id" json:"userId,omitempty"`
+	HypervisorId         *int64      `tfsdk:"hypervisor_id" json:"hypervisorId,omitempty"`
+	Ipv4                 *int64      `tfsdk:"ipv4" json:"ipv4,omitempty"`
+	Storage              *int64      `tfsdk:"storage" json:"storage,omitempty"`
+	Memory               *int64      `tfsdk:"memory" json:"memory,omitempty"`
+	Cores                *int64      `tfsdk:"cores" json:"cpuCores,omitempty"`
+	Traffic              *int64      `tfsdk:"traffic" json:"traffic,omitempty"`
+	InboundNetworkSpeed  *int64      `tfsdk:"inbound_network_speed" json:"networkSpeedInbound,omitempty"`
+	OutboundNetworkSpeed *int64      `tfsdk:"outbound_network_speed" json:"networkSpeedOutbound,omitempty"`
+	StorageProfile       *int64      `tfsdk:"storage_profile" json:"storageProfile,omitempty"`
+	NetworkProfile       *int64      `tfsdk:"network_profile" json:"networkProfile,omitempty"`
+	Id                   types.Int64 `tfsdk:"id" json:"id"`
 }
 
 func (r *VirtfusionServerResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_server"
-}
-
-func GenerateRandomName() string {
-	// Generate a random name for the server if one is not provided
-	// It'll be in a format like "tf-<uuid>"
-	return "tf-" + uuid.New().String()[:8]
 }
 
 func (r *VirtfusionServerResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
@@ -76,12 +59,6 @@ func (r *VirtfusionServerResource) Schema(ctx context.Context, req resource.Sche
 		MarkdownDescription: "Virtfusion Server Resource",
 
 		Attributes: map[string]schema.Attribute{
-			"name": schema.StringAttribute{
-				MarkdownDescription: "Server name. If omitted, a random UUID will be generated.",
-				Optional:            true,
-				Computed:            true,
-				//Default:  stringdefault.StaticString(GenerateRandomName()),
-			},
 			"package_id": schema.Int64Attribute{
 				MarkdownDescription: "Package ID",
 				Required:            true,
@@ -199,6 +176,7 @@ func (r *VirtfusionServerResource) Create(ctx context.Context, req resource.Crea
 	}
 
 	httpReq, err := http.NewRequest("POST", "/servers", bytes.NewBuffer(httpReqBody))
+
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Failed to Create Request",
@@ -269,6 +247,7 @@ func (r *VirtfusionServerResource) Create(ctx context.Context, req resource.Crea
 	}
 
 	responseBody, err := ioutil.ReadAll(httpResponse.Body)
+
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Failed to Read Response",
@@ -289,6 +268,7 @@ func (r *VirtfusionServerResource) Create(ctx context.Context, req resource.Crea
 
 	// Unmarshal the JSON response
 	err = json.Unmarshal(responseBody, &responseData)
+
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Failed to Parse Response",
@@ -299,7 +279,7 @@ func (r *VirtfusionServerResource) Create(ctx context.Context, req resource.Crea
 
 	// Update the Terraform state with the server ID
 	data.Id = types.Int64Value(responseData.Data.Id)
-	data.Name = types.StringValue(responseData.Data.Name)
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 

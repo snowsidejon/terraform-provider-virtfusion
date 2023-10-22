@@ -45,7 +45,6 @@ resource "virtfusion_server" "node1" {
 - `inbound_network_speed` (Number) Inbound network speed in kB/s. Omit to use the default inbound network speed from the package.
 - `ipv4` (Number) IPv4 Addresses to assign. Omit to use the default of 1 IPv4.
 - `memory` (Number) How much memory to allocate in MB. Omit to use the default memory size from the package.
-- `name` (String) Server name. If omitted, a random UUID will be generated.
 - `network_profile` (Number) Network profile ID. Omit to use the default network profile from the package.
 - `outbound_network_speed` (Number) Outbound network speed in kB/s. Omit to use the default outbound network speed from the package.
 - `storage` (Number) Primary storage size in GB. Omit to use the default storage size from the package.
