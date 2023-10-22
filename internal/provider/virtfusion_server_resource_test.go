@@ -19,14 +19,14 @@ func TestAccExampleResource(t *testing.T) {
 			{
 				Config: testAccExampleResourceConfig("one"),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("virtfusion_example.test", "configurable_attribute", "one"),
-					resource.TestCheckResourceAttr("virtfusion_example.test", "defaulted", "example value when not configured"),
-					resource.TestCheckResourceAttr("virtfusion_example.test", "id", "example-id"),
+					resource.TestCheckResourceAttr("virtfusion_server.test", "configurable_attribute", "one"),
+					resource.TestCheckResourceAttr("virtfusion_server.test", "defaulted", "example value when not configured"),
+					resource.TestCheckResourceAttr("virtfusion_server.test", "id", "example-id"),
 				),
 			},
 			// ImportState testing
 			{
-				ResourceName:      "virtfusion_example.test",
+				ResourceName:      "virtfusion_server.test",
 				ImportState:       true,
 				ImportStateVerify: true,
 				// This is not normally necessary, but is here because this
@@ -39,7 +39,7 @@ func TestAccExampleResource(t *testing.T) {
 			{
 				Config: testAccExampleResourceConfig("two"),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("virtfusion_example.test", "configurable_attribute", "two"),
+					resource.TestCheckResourceAttr("virtfusion_server.test", "configurable_attribute", "two"),
 				),
 			},
 			// Delete testing automatically occurs in TestCase
@@ -49,7 +49,7 @@ func TestAccExampleResource(t *testing.T) {
 
 func testAccExampleResourceConfig(configurableAttribute string) string {
 	return fmt.Sprintf(`
-resource "virtfusion_example" "test" {
+resource "virtfusion_server" "test" {
   configurable_attribute = %[1]q
 }
 `, configurableAttribute)

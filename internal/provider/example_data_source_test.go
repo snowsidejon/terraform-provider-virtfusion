@@ -18,7 +18,7 @@ func TestAccExampleDataSource(t *testing.T) {
 			{
 				Config: testAccExampleDataSourceConfig,
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("data.virtfusion_example.test", "id", "example-id"),
+					resource.TestCheckResourceAttr("data.virtfusion_server.test", "id", "example-id"),
 				),
 			},
 		},
@@ -26,7 +26,7 @@ func TestAccExampleDataSource(t *testing.T) {
 }
 
 const testAccExampleDataSourceConfig = `
-data "virtfusion_example" "test" {
+data "virtfusion_server" "test" {
   configurable_attribute = "example"
 }
 `

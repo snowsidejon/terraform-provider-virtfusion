@@ -1,4 +1,4 @@
-resource "virtfusion_example" "server" {
+resource "virtfusion_server" "node1" {
   package_id             = 1
   user_id                = 1
   hypervisor_id          = 1
