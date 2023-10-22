@@ -1,3 +1,4 @@
-provider "scaffolding" {
-  # example configuration here
+provider "virtfusion" {
+  endpoint  = "example.com"
+  api_token = "myapikey"
 }

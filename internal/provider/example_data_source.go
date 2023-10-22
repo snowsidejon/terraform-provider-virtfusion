@@ -17,7 +17,7 @@ import (
 // Ensure provider defined types fully satisfy framework interfaces.
 var _ datasource.DataSource = &ExampleDataSource{}
 
-func NewExampleDataSource() datasource.DataSource {
+func NewVirtfusionDataSource() datasource.DataSource {
 	return &ExampleDataSource{}
 }
 
