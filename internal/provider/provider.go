@@ -116,6 +116,7 @@ func (p *ScaffoldingProvider) Resources(ctx context.Context) []func() resource.R
 	return []func() resource.Resource{
 		NewVirtfusionServerResource,
 		NewVirtfusionServerBuildResource,
+		NewVirtfusionSSHResource,
 	}
 }
 
