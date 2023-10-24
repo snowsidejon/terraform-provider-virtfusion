@@ -26,7 +26,6 @@ resource "virtfusion_server" "node1" {
   outbound_network_speed = 100
   storage_profile        = 1
   network_profile        = 1
-  name                   = "test"
 }
 ```
 
