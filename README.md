@@ -22,6 +22,7 @@ terraform {
   required_providers {
     virtfusion = {
       source = "ezscale/virtfusion"
+        version = "0.0.3"
     }
   }
 }
