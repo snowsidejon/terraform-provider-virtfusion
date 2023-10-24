@@ -31,11 +31,10 @@ type VirtfusionSSHResource struct {
 
 // VirtfusionSSHResourceModel describes the resource data model.
 type VirtfusionSSHResourceModel struct {
-	UserId        *int64       `tfsdk:"user_id" json:"userId"`
-	Name          *string      `tfsdk:"name" json:"name"`
-	PublicKey     *string      `tfsdk:"public_key" json:"publicKey"`
-	PublicKeyHash types.String `tfsdk:"public_key_hash"`
-	Id            types.Int64  `tfsdk:"id" json:"id,omitempty"`
+	UserId    *int64      `tfsdk:"user_id" json:"userId"`
+	Name      *string     `tfsdk:"name" json:"name"`
+	PublicKey *string     `tfsdk:"public_key" json:"publicKey"`
+	Id        types.Int64 `tfsdk:"id" json:"id,omitempty"`
 }
 
 func (r *VirtfusionSSHResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -59,11 +58,6 @@ func (r *VirtfusionSSHResource) Schema(ctx context.Context, req resource.SchemaR
 			"public_key": schema.StringAttribute{
 				Description: "Public Key",
 				Required:    true,
-			},
-			"public_key_hash": schema.StringAttribute{
-				Description: "Public Key Hash",
-				Computed:    true,
-				Default:     nil,
 			},
 			"id": schema.Int64Attribute{
 				Description: "SSH Key ID",
@@ -263,7 +257,6 @@ func (r *VirtfusionSSHResource) Read(ctx context.Context, req resource.ReadReque
 	}
 
 	data.Name = &responseData.Data.Name
-	data.PublicKeyHash = types.StringValue(responseData.Data.PublicKeyHash)
 
 	// Save updated data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
