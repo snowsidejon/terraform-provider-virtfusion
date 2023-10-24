@@ -117,6 +117,7 @@ func (p *VirtfusionProvider) Resources(ctx context.Context) []func() resource.Re
 		NewVirtfusionServerResource,
 		NewVirtfusionServerBuildResource,
 		NewVirtfusionSSHResource,
+		NewVirtfusionPackageResource,
 	}
 }
 
