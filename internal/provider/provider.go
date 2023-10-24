@@ -16,11 +16,11 @@ import (
 	"path"
 )
 
-// Ensure ScaffoldingProvider satisfies various provider interfaces.
-var _ provider.Provider = &ScaffoldingProvider{}
+// Ensure VirtfusionProvider satisfies various provider interfaces.
+var _ provider.Provider = &VirtfusionProvider{}
 
-// ScaffoldingProvider defines the provider implementation.
-type ScaffoldingProvider struct {
+// VirtfusionProvider defines the provider implementation.
+type VirtfusionProvider struct {
 	// version is set to the provider version on release, "dev" when the
 	// provider is built and ran locally, and "test" when running acceptance
 	// testing.
@@ -33,12 +33,12 @@ type ScaffoldingProviderModel struct {
 	ApiToken types.String `tfsdk:"api_token"`
 }
 
-func (p *ScaffoldingProvider) Metadata(ctx context.Context, req provider.MetadataRequest, resp *provider.MetadataResponse) {
+func (p *VirtfusionProvider) Metadata(ctx context.Context, req provider.MetadataRequest, resp *provider.MetadataResponse) {
 	resp.TypeName = "virtfusion"
 	resp.Version = p.version
 }
 
-func (p *ScaffoldingProvider) Schema(ctx context.Context, req provider.SchemaRequest, resp *provider.SchemaResponse) {
+func (p *VirtfusionProvider) Schema(ctx context.Context, req provider.SchemaRequest, resp *provider.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
 			"endpoint": schema.StringAttribute{
@@ -53,7 +53,7 @@ func (p *ScaffoldingProvider) Schema(ctx context.Context, req provider.SchemaReq
 	}
 }
 
-func (p *ScaffoldingProvider) Configure(ctx context.Context, req provider.ConfigureRequest, resp *provider.ConfigureResponse) {
+func (p *VirtfusionProvider) Configure(ctx context.Context, req provider.ConfigureRequest, resp *provider.ConfigureResponse) {
 	// Check environment variables
 	apiToken := os.Getenv("VIRTFUSION_API_TOKEN")
 	endpoint := os.Getenv("VIRTFUSION_ENDPOINT")
@@ -112,7 +112,7 @@ func (p *ScaffoldingProvider) Configure(ctx context.Context, req provider.Config
 	resp.ResourceData = client
 }
 
-func (p *ScaffoldingProvider) Resources(ctx context.Context) []func() resource.Resource {
+func (p *VirtfusionProvider) Resources(ctx context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
 		NewVirtfusionServerResource,
 		NewVirtfusionServerBuildResource,
@@ -120,7 +120,7 @@ func (p *ScaffoldingProvider) Resources(ctx context.Context) []func() resource.R
 	}
 }
 
-func (p *ScaffoldingProvider) DataSources(ctx context.Context) []func() datasource.DataSource {
+func (p *VirtfusionProvider) DataSources(ctx context.Context) []func() datasource.DataSource {
 	return []func() datasource.DataSource{}
 }
 
@@ -140,7 +140,7 @@ func (c *CustomTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 
 func New(version string) func() provider.Provider {
 	return func() provider.Provider {
-		return &ScaffoldingProvider{
+		return &VirtfusionProvider{
 			version: version,
 		}
 	}
