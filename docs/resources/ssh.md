@@ -36,4 +36,3 @@ resource "virtfusion_ssh" "dummy_key" {
 ### Read-Only
 
 - `id` (Number) SSH Key ID
-- `public_key_hash` (String) Public Key Hash

@@ -27,8 +27,8 @@ type VirtfusionProvider struct {
 	version string
 }
 
-// ScaffoldingProviderModel describes the provider data model.
-type ScaffoldingProviderModel struct {
+// VirtfusionProviderModel describes the provider data model.
+type VirtfusionProviderModel struct {
 	Endpoint types.String `tfsdk:"endpoint"`
 	ApiToken types.String `tfsdk:"api_token"`
 }
@@ -58,7 +58,7 @@ func (p *VirtfusionProvider) Configure(ctx context.Context, req provider.Configu
 	apiToken := os.Getenv("VIRTFUSION_API_TOKEN")
 	endpoint := os.Getenv("VIRTFUSION_ENDPOINT")
 
-	var data ScaffoldingProviderModel
+	var data VirtfusionProviderModel
 
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
 
@@ -121,7 +121,9 @@ func (p *VirtfusionProvider) Resources(ctx context.Context) []func() resource.Re
 }
 
 func (p *VirtfusionProvider) DataSources(ctx context.Context) []func() datasource.DataSource {
-	return []func() datasource.DataSource{}
+	return []func() datasource.DataSource{
+		NewVirtfusionServerDataSource,
+	}
 }
 
 type CustomTransport struct {
