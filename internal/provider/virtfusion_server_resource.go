@@ -8,15 +8,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/hashicorp/terraform-plugin-framework/path"
+	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"io"
 	"io/ioutil"
 	"net/http"
-
-	"github.com/hashicorp/terraform-plugin-framework/path"
-	"github.com/hashicorp/terraform-plugin-framework/resource"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -34,19 +34,36 @@ type VirtfusionServerResource struct {
 
 // VirtfusionServerResourceModel describes the resource data model.
 type VirtfusionServerResourceModel struct {
-	PackageId            *int64      `tfsdk:"package_id" json:"packageId,omitempty"`
-	UserId               *int64      `tfsdk:"user_id" json:"userId,omitempty"`
-	HypervisorId         *int64      `tfsdk:"hypervisor_id" json:"hypervisorId,omitempty"`
-	Ipv4                 *int64      `tfsdk:"ipv4" json:"ipv4,omitempty"`
-	Storage              *int64      `tfsdk:"storage" json:"storage,omitempty"`
-	Memory               *int64      `tfsdk:"memory" json:"memory,omitempty"`
-	Cores                *int64      `tfsdk:"cores" json:"cpuCores,omitempty"`
-	Traffic              *int64      `tfsdk:"traffic" json:"traffic,omitempty"`
-	InboundNetworkSpeed  *int64      `tfsdk:"inbound_network_speed" json:"networkSpeedInbound,omitempty"`
-	OutboundNetworkSpeed *int64      `tfsdk:"outbound_network_speed" json:"networkSpeedOutbound,omitempty"`
-	StorageProfile       *int64      `tfsdk:"storage_profile" json:"storageProfile,omitempty"`
-	NetworkProfile       *int64      `tfsdk:"network_profile" json:"networkProfile,omitempty"`
-	Id                   types.Int64 `tfsdk:"id" json:"id"`
+	PackageId            *int64       `tfsdk:"package_id" json:"packageId,omitempty"`
+	UserId               *int64       `tfsdk:"user_id" json:"userId,omitempty"`
+	HypervisorId         *int64       `tfsdk:"hypervisor_id" json:"hypervisorId,omitempty"`
+	Ipv4                 *int64       `tfsdk:"ipv4" json:"ipv4,omitempty"`
+	Storage              *int64       `tfsdk:"storage" json:"storage,omitempty"`
+	Memory               *int64       `tfsdk:"memory" json:"memory,omitempty"`
+	Cores                *int64       `tfsdk:"cores" json:"cpuCores,omitempty"`
+	Traffic              *int64       `tfsdk:"traffic" json:"traffic,omitempty"`
+	InboundNetworkSpeed  *int64       `tfsdk:"inbound_network_speed" json:"networkSpeedInbound,omitempty"`
+	OutboundNetworkSpeed *int64       `tfsdk:"outbound_network_speed" json:"networkSpeedOutbound,omitempty"`
+	StorageProfile       *int64       `tfsdk:"storage_profile" json:"storageProfile,omitempty"`
+	NetworkProfile       *int64       `tfsdk:"network_profile" json:"networkProfile,omitempty"`
+	Id                   types.Int64  `tfsdk:"id" json:"id"`
+	Name                 types.String `tfsdk:"name" json:"name"`
+	Hostname             types.String `tfsdk:"hostname" json:"hostname"`
+	Network              struct {
+		Interfaces []struct {
+			Ipv4 []struct {
+				Address string `tfsdk:"address" json:"address"`
+				Gateway string `tfsdk:"gateway" json:"gateway"`
+				Netmask string `tfsdk:"netmask" json:"netmask"`
+			} `tfsdk:"ipv4" json:"ipv4"`
+			Ipv6 []struct {
+				Addresses []string `tfsdk:"addresses" json:"addresses"`
+				Gateway   string   `tfsdk:"gateway" json:"gateway"`
+				Cidr      string   `tfsdk:"cidr" json:"cidr"`
+				Subnet    string   `tfsdk:"subnet" json:"subnet"`
+			} `tfsdk:"ipv6" json:"ipv6"`
+		} `tfsdk:"interfaces" json:"interfaces"`
+	} `tfsdk:"network" json:"network"`
 }
 
 func (r *VirtfusionServerResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -112,6 +129,16 @@ func (r *VirtfusionServerResource) Schema(ctx context.Context, req resource.Sche
 			"id": schema.Int64Attribute{
 				MarkdownDescription: "Server ID",
 				Computed:            true,
+			},
+			"name": schema.StringAttribute{
+				MarkdownDescription: "Server Name",
+				Computed:            true,
+				Default:             stringdefault.StaticString(""),
+			},
+			"hostname": schema.StringAttribute{
+				MarkdownDescription: "Server Hostname",
+				Computed:            true,
+				Default:             stringdefault.StaticString(""),
 			},
 		},
 	}
@@ -293,13 +320,78 @@ func (r *VirtfusionServerResource) Read(ctx context.Context, req resource.ReadRe
 		return
 	}
 
-	// If applicable, this is a great opportunity to initialize any necessary
-	// provider client data and make a call using it.
-	// httpResp, err := r.client.Do(httpReq)
-	// if err != nil {
-	//     resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to read example, got error: %s", err))
-	//     return
-	// }
+	type ResponseData struct {
+		Data struct {
+			Name     string `json:"name"`
+			Hostname string `json:"hostname"`
+			Network  struct {
+				Interfaces []struct {
+					Ipv4 []struct {
+						Address string `tfsdk:"address" json:"address"`
+						Gateway string `tfsdk:"gateway" json:"gateway"`
+						Netmask string `tfsdk:"netmask" json:"netmask"`
+					} `tfsdk:"ipv4" json:"ipv4"`
+					Ipv6 []struct {
+						Addresses []string `tfsdk:"addresses" json:"addresses"`
+						Gateway   string   `tfsdk:"gateway" json:"gateway"`
+						Cidr      string   `tfsdk:"cidr" json:"cidr"`
+						Subnet    string   `tfsdk:"subnet" json:"subnet"`
+					} `tfsdk:"ipv6" json:"ipv6"`
+				} `tfsdk:"interfaces" json:"interfaces"`
+			} `tfsdk:"network" json:"network"`
+		} `json:"data"`
+	}
+
+	var responseData ResponseData
+
+	httpReq, err := http.NewRequest("GET", fmt.Sprintf("/servers/%d", data.Id.ValueInt64()), nil)
+
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Failed to Create Request",
+			fmt.Sprintf("Failed to create a new HTTP request: %s", err.Error()),
+		)
+		return
+	}
+
+	// If the resource returns a 404, then the resource has been deleted. Return an empty state.
+	httpResponse, err := r.client.Do(httpReq)
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			resp.Diagnostics.AddError(
+				"Failed to close response body",
+				fmt.Sprintf("Failed to close response body: %s", err.Error()),
+			)
+		}
+	}(httpResponse.Body)
+
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Failed to Execute Request",
+			fmt.Sprintf("Failed to execute HTTP request: %s", err.Error()),
+		)
+		return
+	}
+
+	if httpResponse.StatusCode == 404 {
+		resp.State.RemoveResource(ctx)
+		return
+	}
+
+	err = json.NewDecoder(httpResponse.Body).Decode(&responseData)
+
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Failed to decode response body",
+			fmt.Sprintf("Failed to decode response body: %s", err.Error()),
+		)
+		return
+	}
+
+	data.Name = types.StringValue(responseData.Data.Name)
+	data.Hostname = types.StringValue(responseData.Data.Hostname)
+	data.Network = responseData.Data.Network
 
 	// Save updated data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)

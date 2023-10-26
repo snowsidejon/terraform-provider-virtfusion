@@ -4,12 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 	"io"
 	"net/http"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -47,12 +47,12 @@ type VirtfusionServerDataSourceModel struct {
 	Created             types.String `tfsdk:"created" json:"created"`
 	Updated             types.String `tfsdk:"updated" json:"updated"`
 	//Settings            struct {
-	//	OsTemplateInstall   types.Bool   `tfsdk:"os_template_install" json:"osTemplateInstall"`
+	//	OsTemplateInstall   *bool   `tfsdk:"os_template_install" json:"osTemplateInstall"`
 	//	OsTemplateInstallId types.Int64  `tfsdk:"os_template_install_id" json:"osTemplateInstallId"`
-	//	EncryptedPassword   types.String `tfsdk:"encrypted_password" json:"encryptedPassword"`
+	//	EncryptedPassword   *string `tfsdk:"encrypted_password" json:"encryptedPassword"`
 	//	BackupPlan          types.Int64  `tfsdk:"backup_plan" json:"backupPlan"`
-	//	Uefi                types.Bool   `tfsdk:"uefi" json:"uefi"`
-	//	CloudInit           types.Bool   `tfsdk:"cloud_init" json:"cloudInit"`
+	//	Uefi                *bool   `tfsdk:"uefi" json:"uefi"`
+	//	CloudInit           *bool   `tfsdk:"cloud_init" json:"cloudInit"`
 	//	CloudInitType       types.Int64  `tfsdk:"cloud_init_type" json:"cloudInitType"`
 	//	Resources           struct {
 	//		Memory  types.Int64 `tfsdk:"memory" json:"memory"`
@@ -61,38 +61,92 @@ type VirtfusionServerDataSourceModel struct {
 	//		Traffic types.Int64 `tfsdk:"traffic" json:"traffic"`
 	//	} `tfsdk:"resources" json:"resources"`
 	//} `tfsdk:"settings" json:"settings"`
-	Network struct {
-		Interfaces []struct {
-			Enabled types.Bool   `tfsdk:"enabled" json:"enabled"`
-			Name    types.String `tfsdk:"name" json:"name"`
-			Type    types.String `tfsdk:"type" json:"type"`
-			Mac     types.String `tfsdk:"mac" json:"mac"`
-			Ipv4    []struct {
-				Id          types.Int64  `tfsdk:"id" json:"id"`
-				Enabled     types.Bool   `tfsdk:"enabled" json:"enabled"`
-				Address     types.String `tfsdk:"address" json:"address"`
-				Netmask     types.String `tfsdk:"netmask" json:"netmask"`
-				Gateway     types.String `tfsdk:"gateway" json:"gateway"`
-				ResolverOne types.String `tfsdk:"resolver_one" json:"resolverOne"`
-				ResolverTwo types.String `tfsdk:"resolver_two" json:"resolverTwo"`
-				Rdns        types.String `tfsdk:"rdns" json:"rdns"`
-				Mac         types.String `tfsdk:"mac" json:"mac"`
-			} `tfsdk:"ipv4" json:"ipv4"`
-			Ipv6 []struct {
-			} `tfsdk:"ipv6" json:"ipv6"`
-		} `tfsdk:"interfaces" json:"interfaces"`
-	} `tfsdk:"network" json:"network"`
+	Network *NetworkStruct `tfsdk:"network" json:"network"`
 	//Owner struct {
 	//	Id            types.Int64  `tfsdk:"id" json:"id"`
-	//	Name          types.String `tfsdk:"name" json:"name"`
-	//	Email         types.String `tfsdk:"email" json:"email"`
+	//	Name          *string `tfsdk:"name" json:"name"`
+	//	Email         *string `tfsdk:"email" json:"email"`
 	//	ExtId         types.Int64  `tfsdk:"ext_id" json:"extRelationId"`
-	//	Timezone      types.String `tfsdk:"timezone" json:"timezone"`
-	//	Suspended     types.Bool   `tfsdk:"suspended" json:"suspended"`
-	//	Created       types.String `tfsdk:"created" json:"created"`
-	//	Updated       types.String `tfsdk:"updated" json:"updated"`
-	//	TwoFactorAuth types.Bool   `tfsdk:"two_factor_auth" json:"twoFactorAuth"`
+	//	Timezone      *string `tfsdk:"timezone" json:"timezone"`
+	//	Suspended     *bool   `tfsdk:"suspended" json:"suspended"`
+	//	Created       *string `tfsdk:"created" json:"created"`
+	//	Updated       *string `tfsdk:"updated" json:"updated"`
+	//	TwoFactorAuth *bool   `tfsdk:"two_factor_auth" json:"twoFactorAuth"`
 	//} `tfsdk:"owner" json:"owner"`
+}
+
+type NetworkStruct struct {
+	Interfaces []struct {
+		Enabled bool   `tfsdk:"enabled" json:"enabled"`
+		Name    string `tfsdk:"name" json:"name"`
+		Type    string `tfsdk:"type" json:"type"`
+		Mac     string `tfsdk:"mac" json:"mac"`
+		Ipv4    []struct {
+			Id          int64  `tfsdk:"id" json:"id"`
+			Enabled     bool   `tfsdk:"enabled" json:"enabled"`
+			Address     string `tfsdk:"address" json:"address"`
+			Netmask     string `tfsdk:"netmask" json:"netmask"`
+			Gateway     string `tfsdk:"gateway" json:"gateway"`
+			ResolverOne string `tfsdk:"resolver_one" json:"resolverOne"`
+			ResolverTwo string `tfsdk:"resolver_two" json:"resolverTwo"`
+			Rdns        string `tfsdk:"rdns" json:"rdns"`
+			Mac         string `tfsdk:"mac" json:"mac"`
+		} `tfsdk:"ipv4" json:"ipv4"`
+		Ipv6 []struct {
+		} `tfsdk:"ipv6" json:"ipv6"`
+	} `tfsdk:"interfaces" json:"interfaces"`
+}
+
+type VirtfusionServerDataResponseModel struct {
+	Data struct {
+		Id                  int64  `json:"id"`
+		OwnerId             int64  `json:"owner_id"`
+		HypervisorId        int64  `json:"hypervisor_id"`
+		Name                string `json:"name"`
+		Hostname            string `json:"hostname"`
+		CommissionStatus    int64  `json:"commission_status"`
+		Uuid                string `json:"uuid"`
+		State               string `json:"state"`
+		MigrateLevel        int64  `json:"migrate_level"`
+		DeleteLevel         int64  `json:"delete_level"`
+		ConfigLevel         int64  `json:"config_level"`
+		Rebuild             bool   `json:"rebuild"`
+		Suspended           bool   `json:"suspended"`
+		Protected           bool   `json:"protected"`
+		BuildFailed         bool   `json:"build_failed"`
+		PrimaryNetworkDhcp4 bool   `json:"primary_network_dhcp4"`
+		PrimaryNetworkDhcp6 bool   `json:"primary_network_dhcp6"`
+		Built               string `json:"built"`
+		Created             string `json:"created"`
+		Updated             string `json:"updated"`
+		//Settings            struct {
+		//	OsTemplateInstall   *bool   `json:"os_template_install"`
+		//	OsTemplateInstallId *int64  `json:"os_template_install_id"`
+		//	EncryptedPassword   *string `json:"encrypted_password"`
+		//	BackupPlan          *int64  `json:"backup_plan"`
+		//	Uefi                *bool   `json:"uefi"`
+		//	CloudInit           *bool   `json:"cloud_init"`
+		//	CloudInitType       *int64  `json:"cloud_init_type"`
+		//	Resources           struct {
+		//		Memory  *int64 `json:"memory"`
+		//		Cores   *int64 `json:"cpu_cores"`
+		//		Storage *int64 `json:"storage"`
+		//		Traffic *int64 `json:"traffic"`
+		//	} `json:"resources"`
+		//} `json:"settings"`
+		Network *NetworkStruct `tfsdk:"network" json:"network"`
+		//Owner struct {
+		//	Id            *int64  `json:"id"`
+		//	Name          *string `json:"name"`
+		//	Email         *string `json:"email"`
+		//	ExtId         *int64  `json:"ext_id"`
+		//	Timezone      *string `json:"timezone"`
+		//	Suspended     *bool   `json:"suspended"`
+		//	Created       *string `json:"created"`
+		//	Updated       *string `json:"updated"`
+		//	TwoFactorAuth *bool   `json:"two_factor_auth"`
+		//} `json:"owner"`
+	} `json:"data"`
 }
 
 func (d *VirtfusionServerDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -282,77 +336,7 @@ func (d *VirtfusionServerDataSource) Configure(ctx context.Context, req datasour
 
 func (d *VirtfusionServerDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	var data VirtfusionServerDataSourceModel
-	var responseData struct {
-		Data struct {
-			Id                  int64  `json:"id"`
-			OwnerId             int64  `json:"owner_id"`
-			HypervisorId        int64  `json:"hypervisor_id"`
-			Name                string `json:"name"`
-			Hostname            string `json:"hostname"`
-			CommissionStatus    int64  `json:"commission_status"`
-			Uuid                string `json:"uuid"`
-			State               string `json:"state"`
-			MigrateLevel        int64  `json:"migrate_level"`
-			DeleteLevel         int64  `json:"delete_level"`
-			ConfigLevel         int64  `json:"config_level"`
-			Rebuild             bool   `json:"rebuild"`
-			Suspended           bool   `json:"suspended"`
-			Protected           bool   `json:"protected"`
-			BuildFailed         bool   `json:"build_failed"`
-			PrimaryNetworkDhcp4 bool   `json:"primary_network_dhcp4"`
-			PrimaryNetworkDhcp6 bool   `json:"primary_network_dhcp6"`
-			Built               string `json:"built"`
-			Created             string `json:"created"`
-			Updated             string `json:"updated"`
-			//Settings            struct {
-			//	OsTemplateInstall   types.Bool   `json:"os_template_install"`
-			//	OsTemplateInstallId types.Int64  `json:"os_template_install_id"`
-			//	EncryptedPassword   types.String `json:"encrypted_password"`
-			//	BackupPlan          types.Int64  `json:"backup_plan"`
-			//	Uefi                types.Bool   `json:"uefi"`
-			//	CloudInit           types.Bool   `json:"cloud_init"`
-			//	CloudInitType       types.Int64  `json:"cloud_init_type"`
-			//	Resources           struct {
-			//		Memory  types.Int64 `json:"memory"`
-			//		Cores   types.Int64 `json:"cpu_cores"`
-			//		Storage types.Int64 `json:"storage"`
-			//		Traffic types.Int64 `json:"traffic"`
-			//	} `json:"resources"`
-			//} `json:"settings"`
-			Network struct {
-				Interfaces []struct {
-					Enabled bool   `json:"enabled"`
-					Name    string `json:"name"`
-					Type    string `json:"type"`
-					Mac     string `json:"mac"`
-					Ipv4    []struct {
-						Id          int64  `json:"id"`
-						Enabled     bool   `json:"enabled"`
-						Address     string `json:"address"`
-						Netmask     string `json:"netmask"`
-						Gateway     string `json:"gateway"`
-						ResolverOne string `json:"resolver_one"`
-						ResolverTwo string `json:"resolver_two"`
-						Rdns        string `json:"rdns"`
-						Mac         string `json:"mac"`
-					} `json:"ipv4"`
-					Ipv6 []struct {
-					} `json:"ipv6"`
-				} `json:"interfaces"`
-			} `json:"network"`
-			//Owner struct {
-			//	Id            types.Int64  `json:"id"`
-			//	Name          types.String `json:"name"`
-			//	Email         types.String `json:"email"`
-			//	ExtId         types.Int64  `json:"ext_id"`
-			//	Timezone      types.String `json:"timezone"`
-			//	Suspended     types.Bool   `json:"suspended"`
-			//	Created       types.String `json:"created"`
-			//	Updated       types.String `json:"updated"`
-			//	TwoFactorAuth types.Bool   `json:"two_factor_auth"`
-			//} `json:"owner"`
-		} `json:"data"`
-	}
+	var responseData VirtfusionServerDataResponseModel
 
 	// Read Terraform configuration data into the model
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
@@ -383,6 +367,10 @@ func (d *VirtfusionServerDataSource) Read(ctx context.Context, req datasource.Re
 			)
 		}
 	}(httpResponse.Body)
+	resp.Diagnostics.AddWarning(
+		"Terraform is not able to read the server data",
+		fmt.Sprintf("Terraform is not able to read the server data: %s", httpResponse.Body),
+	)
 
 	if err != nil {
 		resp.Diagnostics.AddError(
@@ -427,6 +415,8 @@ func (d *VirtfusionServerDataSource) Read(ctx context.Context, req datasource.Re
 	data.Built = types.StringValue(responseData.Data.Built)
 	data.Created = types.StringValue(responseData.Data.Created)
 	data.Updated = types.StringValue(responseData.Data.Updated)
+
+	data.Network = responseData.Data.Network
 
 	// Save data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
