@@ -29,13 +29,12 @@ checksum:
 
 signs:
   - artifacts: checksum
+    cmd: gpg
     args:
       - "--batch"
       - "--yes"
       - "--pinentry-mode"
       - "loopback"
-      - "--passphrase"
-      - "${GPG_PASSPHRASE}"
       - "-u"
       - "{{ .Env.GPG_FINGERPRINT }}"
       - "--output"
