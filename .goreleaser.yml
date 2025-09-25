@@ -39,6 +39,8 @@ signs:
       - "--yes"
       - "--pinentry-mode"
       - "loopback"
+      - "--passphrase"
+      - "{{ .Env.GPG_PASSPHRASE }}"
       - "-u"
       - "{{ .Env.GPG_FINGERPRINT }}"
       - "--output"
