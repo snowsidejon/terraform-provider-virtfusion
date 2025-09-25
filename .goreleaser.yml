@@ -8,6 +8,8 @@ builds:
   - id: terraform-provider-virtfusion
     main: .
     binary: "{{ .ProjectName }}"
+    env:
+      - CGO_ENABLED=0
     goos:
       - linux
       - windows
@@ -15,6 +17,8 @@ builds:
     goarch:
       - amd64
       - arm64
+    ldflags:
+      - "-s -w -X main.version={{.Version}}"
 
 archives:
   - id: release
@@ -22,6 +26,15 @@ archives:
     builds:
       - terraform-provider-virtfusion
     name_template: "{{ .ProjectName }}_v{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    replacements:
+      darwin: darwin
+      linux: linux
+      windows: windows
+      amd64: amd64
+      arm64: arm64
+    files:
+      - LICENSE
+      - README.md
 
 checksum:
   name_template: "{{ .ProjectName }}_v{{ .Version }}_SHA256SUMS"
@@ -33,3 +46,4 @@ signs:
 release:
   draft: false
   prerelease: false
+  mode: replace
