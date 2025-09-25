@@ -21,6 +21,7 @@ jobs:
         run: |
           echo "${{ secrets.GPG_PRIVATE_KEY }}" | gpg --batch --import
           gpg --list-secret-keys --keyid-format LONG
+        shell: bash
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
@@ -28,8 +29,7 @@ jobs:
           distribution: goreleaser
           version: latest
           args: release --clean
-env:
-  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  GPG_FINGERPRINT: 8BF2DA5FF04681174B1814C59213DFF34C99F136
-  GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
-
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GPG_FINGERPRINT: 4FAF6D1A177554B0
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
