@@ -25,7 +25,8 @@ archives:
       - none*
 
 checksum:
-  name_template: "checksums.txt"
+  name_template: "terraform-provider-virtfusion_v{{ .Version }}_SHA256SUMS"
+
 
 signs:
   - artifacts: checksum
