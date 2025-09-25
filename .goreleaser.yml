@@ -28,12 +28,6 @@ archives:
     builds:
       - terraform-provider-virtfusion
     name_template: "{{ .ProjectName }}_v{{ .Version }}_{{ .Os }}_{{ .Arch }}"
-    replacements:
-      darwin: darwin
-      linux: linux
-      windows: windows
-      amd64: amd64
-      arm64: arm64
     files:
       - LICENSE
       - README.md
