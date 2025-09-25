@@ -8,15 +8,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
-	"github.com/hashicorp/terraform-plugin-framework/types"
-	"io"
 	"io/ioutil"
 	"net/http"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -37,6 +38,7 @@ type VirtfusionServerResourceModel struct {
 	PackageId            *int64      `tfsdk:"package_id" json:"packageId,omitempty"`
 	UserId               *int64      `tfsdk:"user_id" json:"userId,omitempty"`
 	HypervisorId         *int64      `tfsdk:"hypervisor_id" json:"hypervisorId,omitempty"`
+	HypervisorGroupId    *int64      `tfsdk:"hypervisor_group_id" json:"hypervisorGroupId,omitempty"`
 	Ipv4                 *int64      `tfsdk:"ipv4" json:"ipv4,omitempty"`
 	Storage              *int64      `tfsdk:"storage" json:"storage,omitempty"`
 	Memory               *int64      `tfsdk:"memory" json:"memory,omitempty"`
@@ -55,7 +57,6 @@ func (r *VirtfusionServerResource) Metadata(ctx context.Context, req resource.Me
 
 func (r *VirtfusionServerResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		// This description is used by the documentation generator and the language server.
 		MarkdownDescription: "Virtfusion Server Resource",
 
 		Attributes: map[string]schema.Attribute{
@@ -68,45 +69,56 @@ func (r *VirtfusionServerResource) Schema(ctx context.Context, req resource.Sche
 				Required:            true,
 			},
 			"hypervisor_id": schema.Int64Attribute{
-				MarkdownDescription: "Hypervisor Group ID",
-				Required:            true,
+				MarkdownDescription: "Specific Hypervisor ID to place the server on. Optional — conflicts with hypervisor_group_id.",
+				Optional:            true,
+				Validators: []validator.Int64{
+					int64validator.ConflictsWith(path.MatchRoot("hypervisor_group_id")),
+				},
 			},
+			"hypervisor_group_id": schema.Int64Attribute{
+				MarkdownDescription: "Hypervisor Group (location) ID. Optional — conflicts with hypervisor_id. If both omitted, VirtFusion auto-places based on the package asset group.",
+				Optional:            true,
+				Validators: []validator.Int64{
+					int64validator.ConflictsWith(path.MatchRoot("hypervisor_id")),
+				},
+			},
+
 			"ipv4": schema.Int64Attribute{
-				MarkdownDescription: "IPv4 Addresses to assign. Omit to use the default of 1 IPv4.",
+				MarkdownDescription: "IPv4 addresses to assign. Default = 1.",
 				Optional:            true,
 				Computed:            true,
 				Default:             int64default.StaticInt64(1),
 			},
 			"storage": schema.Int64Attribute{
-				MarkdownDescription: "Primary storage size in GB. Omit to use the default storage size from the package.",
+				MarkdownDescription: "Primary storage size in GB. Omit for package default.",
 				Optional:            true,
 			},
 			"memory": schema.Int64Attribute{
-				MarkdownDescription: "How much memory to allocate in MB. Omit to use the default memory size from the package.",
+				MarkdownDescription: "Memory in MB. Omit for package default.",
 				Optional:            true,
 			},
 			"cores": schema.Int64Attribute{
-				MarkdownDescription: "How many cores to allocate. Omit to use the default core count from the package.",
+				MarkdownDescription: "CPU core count. Omit for package default.",
 				Optional:            true,
 			},
 			"traffic": schema.Int64Attribute{
-				MarkdownDescription: "How much traffic to allocate in GB. Omit to use the default traffic size from the package. 0=Unlimited",
+				MarkdownDescription: "Traffic in GB. 0 = unlimited. Omit for package default.",
 				Optional:            true,
 			},
 			"inbound_network_speed": schema.Int64Attribute{
-				MarkdownDescription: "Inbound network speed in kB/s. Omit to use the default inbound network speed from the package.",
+				MarkdownDescription: "Inbound network speed (kB/s). Omit for package default.",
 				Optional:            true,
 			},
 			"outbound_network_speed": schema.Int64Attribute{
-				MarkdownDescription: "Outbound network speed in kB/s. Omit to use the default outbound network speed from the package.",
+				MarkdownDescription: "Outbound network speed (kB/s). Omit for package default.",
 				Optional:            true,
 			},
 			"storage_profile": schema.Int64Attribute{
-				MarkdownDescription: "Storage profile ID. Omit to use the default storage profile from the package.",
+				MarkdownDescription: "Storage profile ID. Omit for package default.",
 				Optional:            true,
 			},
 			"network_profile": schema.Int64Attribute{
-				MarkdownDescription: "Network profile ID. Omit to use the default network profile from the package.",
+				MarkdownDescription: "Network profile ID. Omit for package default.",
 				Optional:            true,
 			},
 			"id": schema.Int64Attribute{
@@ -118,255 +130,156 @@ func (r *VirtfusionServerResource) Schema(ctx context.Context, req resource.Sche
 }
 
 func (r *VirtfusionServerResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	// Prevent panic if the provider has not been configured.
 	if req.ProviderData == nil {
 		return
 	}
-
 	client, ok := req.ProviderData.(*http.Client)
-
 	if !ok {
 		resp.Diagnostics.AddError(
 			"Unexpected Resource Configure Type",
-			fmt.Sprintf("Expected *http.Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+			fmt.Sprintf("Expected *http.Client, got: %T", req.ProviderData),
 		)
-
 		return
 	}
-
 	r.client = client
 }
 
 func (r *VirtfusionServerResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var data VirtfusionServerResourceModel
-
-	// Read Terraform plan data into the model
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
-
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	createReq := VirtfusionServerResourceModel{
-		PackageId:            data.PackageId,
-		UserId:               data.UserId,
-		HypervisorId:         data.HypervisorId,
-		Ipv4:                 data.Ipv4,
-		Storage:              data.Storage,
-		Traffic:              data.Traffic,
-		Memory:               data.Memory,
-		Cores:                data.Cores,
-		InboundNetworkSpeed:  data.InboundNetworkSpeed,
-		OutboundNetworkSpeed: data.OutboundNetworkSpeed,
-		StorageProfile:       data.StorageProfile,
-		NetworkProfile:       data.NetworkProfile,
+	// Build request dynamically: only include hypervisor fields if provided.
+	createReq := map[string]interface{}{
+		"packageId": data.PackageId,
+		"userId":    data.UserId,
+	}
+	if data.HypervisorId != nil {
+		createReq["hypervisorId"] = data.HypervisorId
+	}
+	if data.HypervisorGroupId != nil {
+		createReq["hypervisorGroupId"] = data.HypervisorGroupId
+	}
+	if data.Ipv4 != nil {
+		createReq["ipv4"] = data.Ipv4
+	}
+	if data.Storage != nil {
+		createReq["storage"] = data.Storage
+	}
+	if data.Traffic != nil {
+		createReq["traffic"] = data.Traffic
+	}
+	if data.Memory != nil {
+		createReq["memory"] = data.Memory
+	}
+	if data.Cores != nil {
+		createReq["cpuCores"] = data.Cores
+	}
+	if data.InboundNetworkSpeed != nil {
+		createReq["networkSpeedInbound"] = data.InboundNetworkSpeed
+	}
+	if data.OutboundNetworkSpeed != nil {
+		createReq["networkSpeedOutbound"] = data.OutboundNetworkSpeed
+	}
+	if data.StorageProfile != nil {
+		createReq["storageProfile"] = data.StorageProfile
+	}
+	if data.NetworkProfile != nil {
+		createReq["networkProfile"] = data.NetworkProfile
 	}
 
 	httpReqBody, err := json.Marshal(createReq)
-
 	if err != nil {
-		resp.Diagnostics.AddError(
-			"Unable to Create Resource",
-			"An unexpected error occurred while creating the resource create request. "+
-				"Please report this issue to the provider developers.\n\n"+
-				"JSON Error: "+err.Error(),
-		)
-
+		resp.Diagnostics.AddError("Marshal Error", err.Error())
 		return
 	}
 
 	httpReq, err := http.NewRequest("POST", "/servers", bytes.NewBuffer(httpReqBody))
-
 	if err != nil {
-		resp.Diagnostics.AddError(
-			"Failed to Create Request",
-			fmt.Sprintf("Failed to create a new HTTP request: %s", err.Error()),
-		)
+		resp.Diagnostics.AddError("HTTP Request Error", err.Error())
 		return
 	}
-
-	// Add any additional headers (Content-Type, etc.)
 	httpReq.Header.Set("Content-Type", "application/json")
 
 	httpResponse, err := r.client.Do(httpReq)
 	if err != nil {
-		resp.Diagnostics.AddError(
-			"Failed to Execute Request",
-			fmt.Sprintf("Failed to execute HTTP request: %s", err.Error()),
-		)
+		resp.Diagnostics.AddError("HTTP Execute Error", err.Error())
 		return
 	}
-
-	defer func(Body io.ReadCloser) {
-		err := Body.Close()
-		if err != nil {
-			resp.Diagnostics.AddError(
-				"Failed to Close Request",
-				fmt.Sprintf("Failed to close HTTP request: %s", err.Error()),
-			)
-			return
-		}
-	}(httpResponse.Body)
+	defer httpResponse.Body.Close()
 
 	if httpResponse.StatusCode == 422 {
-		responseBody, err := ioutil.ReadAll(httpResponse.Body)
-		if err != nil {
-			resp.Diagnostics.AddError(
-				"Failed to Read Response",
-				fmt.Sprintf("Failed to read HTTP response body: %s", err.Error()),
-			)
-			return
-		}
-
-		var errorResponse map[string]interface{}
-		err = json.Unmarshal(responseBody, &errorResponse)
-		if err != nil {
-			resp.Diagnostics.AddError(
-				"Failed to Parse Error Response",
-				fmt.Sprintf("Failed to parse HTTP response body: %s", err.Error()),
-			)
-			return
-		}
-
-		if errors, exists := errorResponse["errors"]; exists {
-			resp.Diagnostics.AddError(
-				"Server Returned Errors",
-				fmt.Sprintf("Errors from server: %v", errors),
-			)
-		}
-
+		body, _ := ioutil.ReadAll(httpResponse.Body)
+		resp.Diagnostics.AddError("Server Validation Error", string(body))
 		return
 	}
-
 	if httpResponse.StatusCode != 201 {
-		resp.Diagnostics.AddError(
-			"Failed to Create Resource",
-			fmt.Sprintf("Failed to create resource: %s", httpResponse.Status),
-		)
+		resp.Diagnostics.AddError("Unexpected HTTP Status", httpResponse.Status)
 		return
 	}
 
-	responseBody, err := ioutil.ReadAll(httpResponse.Body)
-
+	body, err := ioutil.ReadAll(httpResponse.Body)
 	if err != nil {
-		resp.Diagnostics.AddError(
-			"Failed to Read Response",
-			fmt.Sprintf("Failed to read HTTP response body: %s", err.Error()),
-		)
+		resp.Diagnostics.AddError("Read Body Error", err.Error())
 		return
 	}
 
-	type ResponseData struct {
+	var response struct {
 		Data struct {
-			Id   int64  `json:"id"`
-			Uuid string `json:"uuid"`
-			Name string `json:"name"`
+			Id int64 `json:"id"`
 		} `json:"data"`
 	}
-
-	var responseData ResponseData
-
-	// Unmarshal the JSON response
-	err = json.Unmarshal(responseBody, &responseData)
-
-	if err != nil {
-		resp.Diagnostics.AddError(
-			"Failed to Parse Response",
-			fmt.Sprintf("Failed to parse HTTP response body: %s", err.Error()),
-		)
+	if err := json.Unmarshal(body, &response); err != nil {
+		resp.Diagnostics.AddError("Unmarshal Error", err.Error())
 		return
 	}
 
-	// Update the Terraform state with the server ID
-	data.Id = types.Int64Value(responseData.Data.Id)
-
+	data.Id = types.Int64Value(response.Data.Id)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
 func (r *VirtfusionServerResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var data VirtfusionServerResourceModel
-
-	// Read Terraform prior state data into the model
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
-
 	if resp.Diagnostics.HasError() {
 		return
 	}
-
-	// If applicable, this is a great opportunity to initialize any necessary
-	// provider client data and make a call using it.
-	// httpResp, err := r.client.Do(httpReq)
-	// if err != nil {
-	//     resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to read example, got error: %s", err))
-	//     return
-	// }
-
-	// Save updated data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
 func (r *VirtfusionServerResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	var data VirtfusionServerResourceModel
-
-	// Read Terraform plan data into the model
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
-
 	if resp.Diagnostics.HasError() {
 		return
 	}
-
-	// If applicable, this is a great opportunity to initialize any necessary
-	// provider client data and make a call using it.
-	// httpResp, err := r.client.Do(httpReq)
-	// if err != nil {
-	//     resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to update example, got error: %s", err))
-	//     return
-	// }
-
-	// Save updated data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
 func (r *VirtfusionServerResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var data VirtfusionServerResourceModel
-
-	// Read Terraform prior state data into the model
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
-
 	if resp.Diagnostics.HasError() {
 		return
 	}
-
-	httpReq, err := http.NewRequest("DELETE", fmt.Sprintf("/servers/%d?delay=0", data.Id.ValueInt64()), bytes.NewBuffer([]byte{}))
+	httpReq, err := http.NewRequest("DELETE", fmt.Sprintf("/servers/%d?delay=0", data.Id.ValueInt64()), nil)
 	if err != nil {
-		resp.Diagnostics.AddError(
-			"Failed to Create Request",
-			fmt.Sprintf("Failed to create a new HTTP request: %s", err.Error()),
-		)
+		resp.Diagnostics.AddError("Delete Request Error", err.Error())
 		return
 	}
-
-	// Add any additional headers (Content-Type, etc.)
 	httpReq.Header.Set("Content-Type", "application/json")
-
 	httpResponse, err := r.client.Do(httpReq)
 	if err != nil {
-		resp.Diagnostics.AddError(
-			"Failed to Execute Request",
-			fmt.Sprintf("Failed to execute HTTP request: %s", err.Error()),
-		)
+		resp.Diagnostics.AddError("Delete Execute Error", err.Error())
 		return
 	}
-
+	defer httpResponse.Body.Close()
 	if httpResponse.StatusCode != 204 {
-		resp.Diagnostics.AddError(
-			"Failed to Delete Resource",
-			fmt.Sprintf("Failed to delete resource: %s", httpResponse.Status),
-		)
+		resp.Diagnostics.AddError("Delete Failed", httpResponse.Status)
 		return
 	}
-
-	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
 func (r *VirtfusionServerResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {

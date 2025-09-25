@@ -38,11 +38,10 @@ func main() {
 	flag.BoolVar(&debug, "debug", false, "set to true to run the provider with support for debuggers like delve")
 	flag.Parse()
 
-	opts := providerserver.ServeOpts{
-		// TODO: Update this string with the published name of your provider.
-		Address: "registry.terraform.io/EZSCALE/virtfusion",
-		Debug:   debug,
-	}
+opts := providerserver.ServeOpts{
+    Address: "registry.terraform.io/breezehost/virtfusion",
+    Debug:   debug,
+}
 
 	err := providerserver.Serve(context.Background(), provider.New(version), opts)
 
