@@ -32,4 +32,5 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GPG_FINGERPRINT: ${{ secrets.GPG_FINGERPRINT }}
+          GPG_FINGERPRINT: 4FAF6D1A177554B0
+          GPG_PASSPHRASE_FILE: .gpg_passphrase
