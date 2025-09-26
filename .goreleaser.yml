@@ -34,6 +34,8 @@ signs:
     args:
       [
         "--batch",
+        "--yes",
+        "--pinentry-mode", "loopback",
         "--armor",
         "--output", "${signature}",
         "--detach-sign", "${artifact}"
@@ -41,6 +43,7 @@ signs:
     artifacts: checksum
     signature: "${artifact}.sig"
     output: true
+
 
 
 changelog:
