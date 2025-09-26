@@ -1,73 +1,110 @@
-# Virtfusion Terraform Provider
+# VirtFusion Terraform Provider
 
-<p style="color: red">NOTE: This is a work in progress and is not yet ready for production use.</p>
+![Terraform](https://img.shields.io/badge/Terraform-%235835CC.svg?style=for-the-badge&logo=terraform&logoColor=white)
+![Go](https://img.shields.io/badge/Go-00ADD8?style=for-the-badge&logo=go&logoColor=white)
 
+A Terraform provider for [VirtFusion](https://virtfusion.com), maintained by [BreezeHost](https://breezehost.io).  
+Provision and manage VPS instances directly from Terraform.
 
-## Overview
+---
 
-This is a Terraform provider for the Virtfusion API. It allows you to manage your Virtfusion resources using Terraform.
+## ✨ Features
+- 🔑 Authenticate with API tokens  
+- ☁️ Default endpoint: `https://cloud.breezehost.io`  
+- 📦 Deploy VMs with resource packages (CPU/RAM/Disk plans)  
+- 💾 Select OS templates automatically (defaults to Ubuntu 22.04)  
+- 🌍 Assign public and private IPs  
+- 🏢 Deploy automatically into hypervisor groups (locations)  
+- 🔒 Manage SSH keys and builds  
 
-# What can I do with this provider?
+---
 
-Currently, you're able to manage the following resources:
-* Create and delete virtual machines
-* Create and delete SSH keys
+## 🚀 Quick Start
 
-# How do I use this provider?
-
-Below is an example of how to use this provider to create a virtual machine and an SSH key.
-
+### Install Provider
 ```hcl
 terraform {
   required_providers {
     virtfusion = {
-      source = "ezscale/virtfusion"
-        version = "0.0.3"
+      source  = "snowsidejon/virtfusion"
+      version = "1.0.2"
     }
   }
 }
 
-provider "virtfusion" {
-  endpoint = "virtfusion.example.com"
-  api_token = ""
+### Configure via Environment Variables
+
+Set your credentials and defaults:
+
+export VIRTFUSION_API_TOKEN="your_api_token"
+export VIRTFUSION_OS_TEMPLATE="Ubuntu Server 22.04"
+export VIRTFUSION_RESOURCE_PACKAGE=11
+export VIRTFUSION_PUBLIC_IPS=1
+export VIRTFUSION_PRIVATE_IPS=0
+export VIRTFUSION_HYPERVISOR_GROUP=14
+
+
+### Or, on PowerShell:
+
+$env:VIRTFUSION_API_TOKEN="your_api_token"
+$env:VIRTFUSION_RESOURCE_PACKAGE="11"
+
+## 🛠 Example Usage
+Create a VM
+provider "virtfusion" {}
+
+resource "virtfusion_server" "vm" {
+  name              = "terraform-vm"
+  os_template       = "Debian 12"
+  resource_package  = 15
+  public_ips        = 2
+  private_ips       = 1
+  hypervisor_group  = 14
 }
 
-variable "common" {
-    type = map(string)
-    default = {
-        hypervisor_id = 1
-        package_id = 12
-        user_id = 1
-    }
-}
-
-# Create a SSH key
+## Add SSH Key
 resource "virtfusion_ssh" "key1" {
-  name = "My Test Key"
-  public_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKWyBR+dk5M5MMfmH6Ss5QDSgcAvbCYu0DkqgPKH8O5T testkey@example.com"
-  user_id = var.common["user_id"]
+  name       = "My Test Key"
+  public_key = "ssh-ed25519 AAAAC3Nz..."
 }
 
-# Create a server
-resource "virtfusion_server" "node1" {
-  hypervisor_id = var.common["hypervisor_id"]
-  package_id = var.common["package_id"]
-  user_id = var.common["user_id"]
+## Build VM with OS + SSH
+resource "virtfusion_build" "vm_build" {
+  server_id   = virtfusion_server.vm.id
+  name        = "node1"
+  hostname    = "node1.example.com"
+  osid        = 34
+  ssh_keys    = [virtfusion_ssh.key1.id]
+  vnc         = true
+  ipv6        = true
+  email       = true
 }
 
-# Initialize the server with the OS we want, the SSH key we want, and the hostname we want.
-resource "virtfusion_build" "node1" {
-  server_id = virtfusion_server.node1.id
-  name = "node1-demo"
-  hostname = "node1.example.com"
-  osid = 34
-  vnc = true
-  ipv6 = true
-  ssh_keys = [virtfusion_ssh.key1.id]
-  email = true
-}
-```
+## ⚙️ Configuration Options
+Argument	Env Var	Default	Description
+endpoint	VIRTFUSION_ENDPOINT	cloud.breezehost.io	API endpoint
+api_token	VIRTFUSION_API_TOKEN	Required	API token
+os_template	VIRTFUSION_OS_TEMPLATE	Ubuntu Server 22.04	OS template
+resource_package	VIRTFUSION_RESOURCE_PACKAGE	1	Resource package ID
+public_ips	VIRTFUSION_PUBLIC_IPS	1	Number of public IPs
+private_ips	VIRTFUSION_PRIVATE_IPS	0	Number of private IPs
+hypervisor_group	VIRTFUSION_HYPERVISOR_GROUP	1	Hypervisor group (location) ID
+📝 Contributing
 
-# How can I contribute?
+PRs welcome! Please open issues or submit patches if you’d like to extend functionality.
 
-If you'd like to contribute, please feel free to open a pull request. If you're unsure of what to work on, please check the issues tab for any open issues.
+📖 License
+
+MPL-2.0 License © 2025 BreezeHost
+
+
+---
+
+✅ With this, your provider:
+- Defaults to BreezeHost cloud.  
+- Supports env vars for all the “knobs” (OS, package, IPs, hypervisor group).  
+- Has a clean README for new users.  
+
+---
+
+Do you want me to also draft an **`examples/` folder structure** (`examples/basic`, `examples/multi-ip`, `

@@ -8,15 +8,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
-	"github.com/hashicorp/terraform-plugin-framework/types"
 	"io"
 	"io/ioutil"
 	"net/http"
+	"os"
 
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -49,45 +50,44 @@ func (r *VirtfusionServerBuildResource) Metadata(ctx context.Context, req resour
 
 func (r *VirtfusionServerBuildResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		// This description is used by the documentation generator and the language server.
-		MarkdownDescription: "Virtfusion Server Build Resource",
+		MarkdownDescription: "VirtFusion Server Build Resource. Creates and initializes a VM with OS, hostname, and SSH keys.",
 
 		Attributes: map[string]schema.Attribute{
 			"server_id": schema.Int64Attribute{
-				MarkdownDescription: "Server ID",
+				MarkdownDescription: "Server ID to build.",
 				Required:            true,
 			},
 			"name": schema.StringAttribute{
-				MarkdownDescription: "Server Name",
+				MarkdownDescription: "Display name for the server.",
 				Required:            true,
 			},
 			"hostname": schema.StringAttribute{
-				MarkdownDescription: "Server Hostname",
+				MarkdownDescription: "Hostname for the server.",
 				Optional:            true,
 			},
 			"osid": schema.Int64Attribute{
-				MarkdownDescription: "Server Operating System ID",
-				Required:            true,
+				MarkdownDescription: "Operating system ID. If omitted, the provider will resolve from `os_template` default.",
+				Optional:            true,
 			},
 			"vnc": schema.BoolAttribute{
-				MarkdownDescription: "Server VNC",
+				MarkdownDescription: "Enable VNC access.",
 				Optional:            true,
 				Computed:            true,
 				Default:             booldefault.StaticBool(false),
 			},
 			"ipv6": schema.BoolAttribute{
-				MarkdownDescription: "Server IPv6",
+				MarkdownDescription: "Enable IPv6 networking.",
 				Optional:            true,
 				Computed:            true,
 				Default:             booldefault.StaticBool(false),
 			},
 			"ssh_keys": schema.ListAttribute{
-				MarkdownDescription: "Server SSH Keys IDs",
+				MarkdownDescription: "List of SSH key IDs to provision on the VM.",
 				ElementType:         types.Int64Type,
 				Optional:            true,
 			},
 			"email": schema.BoolAttribute{
-				MarkdownDescription: "Server Email",
+				MarkdownDescription: "Send email on build completion.",
 				Optional:            true,
 				Computed:            true,
 				Default:             booldefault.StaticBool(false),
@@ -97,19 +97,16 @@ func (r *VirtfusionServerBuildResource) Schema(ctx context.Context, req resource
 }
 
 func (r *VirtfusionServerBuildResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	// Prevent panic if the provider has not been configured.
 	if req.ProviderData == nil {
 		return
 	}
 
 	client, ok := req.ProviderData.(*http.Client)
-
 	if !ok {
 		resp.Diagnostics.AddError(
 			"Unexpected Resource Configure Type",
-			fmt.Sprintf("Expected *http.Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+			fmt.Sprintf("Expected *http.Client, got: %T", req.ProviderData),
 		)
-
 		return
 	}
 
@@ -118,12 +115,19 @@ func (r *VirtfusionServerBuildResource) Configure(ctx context.Context, req resou
 
 func (r *VirtfusionServerBuildResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var data VirtfusionServerBuildResourceModel
-
-	// Read Terraform plan data into the model
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
-
 	if resp.Diagnostics.HasError() {
 		return
+	}
+
+	// If no osid is provided, try to resolve it from provider os_template default.
+	if data.Osid == 0 {
+		osid, err := r.lookupDefaultOS()
+		if err != nil {
+			resp.Diagnostics.AddError("OS Lookup Failed", err.Error())
+			return
+		}
+		data.Osid = osid
 	}
 
 	createReq := VirtfusionServerBuildResourceModel{
@@ -137,86 +141,32 @@ func (r *VirtfusionServerBuildResource) Create(ctx context.Context, req resource
 	}
 
 	httpReqBody, err := json.Marshal(createReq)
-
 	if err != nil {
-		resp.Diagnostics.AddError(
-			"Unable to Create Resource",
-			"An unexpected error occurred while creating the resource create request. "+
-				"Please report this issue to the provider developers.\n\n"+
-				"JSON Error: "+err.Error(),
-		)
-
+		resp.Diagnostics.AddError("JSON Marshal Error", err.Error())
 		return
 	}
 
 	httpReq, err := http.NewRequest("POST", fmt.Sprintf("/servers/%d/build", data.ServerId), bytes.NewBuffer(httpReqBody))
-
 	if err != nil {
-		resp.Diagnostics.AddError(
-			"Failed to Create Request",
-			fmt.Sprintf("Failed to create a new HTTP request: %s", err.Error()),
-		)
+		resp.Diagnostics.AddError("HTTP Request Error", err.Error())
 		return
 	}
-
-	// Add any additional headers (Content-Type, etc.)
 	httpReq.Header.Set("Content-Type", "application/json")
 
 	httpResponse, err := r.client.Do(httpReq)
 	if err != nil {
-		resp.Diagnostics.AddError(
-			"Failed to Execute Request",
-			fmt.Sprintf("Failed to execute HTTP request: %s", err.Error()),
-		)
+		resp.Diagnostics.AddError("HTTP Execute Error", err.Error())
 		return
 	}
-
-	defer func(Body io.ReadCloser) {
-		err := Body.Close()
-		if err != nil {
-			resp.Diagnostics.AddError(
-				"Failed to Close Request",
-				fmt.Sprintf("Failed to close HTTP request: %s", err.Error()),
-			)
-			return
-		}
-	}(httpResponse.Body)
+	defer httpResponse.Body.Close()
 
 	if httpResponse.StatusCode == 422 {
-		responseBody, err := ioutil.ReadAll(httpResponse.Body)
-		if err != nil {
-			resp.Diagnostics.AddError(
-				"Failed to Read Response",
-				fmt.Sprintf("Failed to read HTTP response body: %s", err.Error()),
-			)
-			return
-		}
-
-		var errorResponse map[string]interface{}
-		err = json.Unmarshal(responseBody, &errorResponse)
-		if err != nil {
-			resp.Diagnostics.AddError(
-				"Failed to Parse Error Response",
-				fmt.Sprintf("Failed to parse HTTP response body: %s", err.Error()),
-			)
-			return
-		}
-
-		if errors, exists := errorResponse["errors"]; exists {
-			resp.Diagnostics.AddError(
-				"Server Returned Errors",
-				fmt.Sprintf("Errors from server: %v", errors),
-			)
-		}
-
+		responseBody, _ := ioutil.ReadAll(httpResponse.Body)
+		resp.Diagnostics.AddError("Server Validation Error", string(responseBody))
 		return
 	}
-
 	if httpResponse.StatusCode != 200 {
-		resp.Diagnostics.AddError(
-			"Failed to Create Resource",
-			fmt.Sprintf("Failed to create resource: %s", httpResponse.Status),
-		)
+		resp.Diagnostics.AddError("Unexpected HTTP Status", httpResponse.Status)
 		return
 	}
 
@@ -225,61 +175,76 @@ func (r *VirtfusionServerBuildResource) Create(ctx context.Context, req resource
 
 func (r *VirtfusionServerBuildResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var data VirtfusionServerBuildResourceModel
-
-	// Read Terraform prior state data into the model
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
-
 	if resp.Diagnostics.HasError() {
 		return
 	}
-
-	// If applicable, this is a great opportunity to initialize any necessary
-	// provider client data and make a call using it.
-	// httpResp, err := r.client.Do(httpReq)
-	// if err != nil {
-	//     resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to read example, got error: %s", err))
-	//     return
-	// }
-
-	// Save updated data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
 func (r *VirtfusionServerBuildResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	var data VirtfusionServerBuildResourceModel
-
-	// Read Terraform plan data into the model
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
-
 	if resp.Diagnostics.HasError() {
 		return
 	}
-
-	// If applicable, this is a great opportunity to initialize any necessary
-	// provider client data and make a call using it.
-	// httpResp, err := r.client.Do(httpReq)
-	// if err != nil {
-	//     resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to update example, got error: %s", err))
-	//     return
-	// }
-
-	// Save updated data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
 func (r *VirtfusionServerBuildResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var data VirtfusionServerBuildResourceModel
-
-	// Read Terraform prior state data into the model
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
-
 	if resp.Diagnostics.HasError() {
 		return
 	}
-
+	// Nothing to delete — build is a one-time operation.
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
 func (r *VirtfusionServerBuildResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
+}
+
+// lookupDefaultOS resolves the provider's default os_template string into an OS ID.
+// For now, this does a simple GET to /operating-systems and matches by name.
+func (r *VirtfusionServerBuildResource) lookupDefaultOS() (int64, error) {
+	httpReq, err := http.NewRequest("GET", "/operating-systems", nil)
+	if err != nil {
+		return 0, fmt.Errorf("failed to create OS lookup request: %s", err)
+	}
+
+	httpResponse, err := r.client.Do(httpReq)
+	if err != nil {
+		return 0, fmt.Errorf("failed to execute OS lookup request: %s", err)
+	}
+	defer httpResponse.Body.Close()
+
+	if httpResponse.StatusCode != 200 {
+		return 0, fmt.Errorf("unexpected status during OS lookup: %s", httpResponse.Status)
+	}
+
+	var response struct {
+		Data []struct {
+			Id   int64  `json:"id"`
+			Name string `json:"name"`
+		} `json:"data"`
+	}
+	body, _ := io.ReadAll(httpResponse.Body)
+	if err := json.Unmarshal(body, &response); err != nil {
+		return 0, fmt.Errorf("failed to parse OS lookup response: %s", err)
+	}
+
+	// Default template comes from provider env (VIRTFUSION_OS_TEMPLATE) or fallback
+	defaultTemplate := os.Getenv("VIRTFUSION_OS_TEMPLATE")
+	if defaultTemplate == "" {
+		defaultTemplate = "Ubuntu Server 22.04"
+	}
+
+	for _, osInfo := range response.Data {
+		if osInfo.Name == defaultTemplate {
+			return osInfo.Id, nil
+		}
+	}
+
+	return 0, fmt.Errorf("default OS template %q not found", defaultTemplate)
 }

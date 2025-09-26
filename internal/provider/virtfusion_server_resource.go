@@ -35,20 +35,20 @@ type VirtfusionServerResource struct {
 
 // VirtfusionServerResourceModel describes the resource data model.
 type VirtfusionServerResourceModel struct {
-	PackageId            *int64      `tfsdk:"package_id" json:"packageId,omitempty"`
-	UserId               *int64      `tfsdk:"user_id" json:"userId,omitempty"`
-	HypervisorId         *int64      `tfsdk:"hypervisor_id" json:"hypervisorId,omitempty"`
-	HypervisorGroupId    *int64      `tfsdk:"hypervisor_group_id" json:"hypervisorGroupId,omitempty"`
-	Ipv4                 *int64      `tfsdk:"ipv4" json:"ipv4,omitempty"`
-	Storage              *int64      `tfsdk:"storage" json:"storage,omitempty"`
-	Memory               *int64      `tfsdk:"memory" json:"memory,omitempty"`
-	Cores                *int64      `tfsdk:"cores" json:"cpuCores,omitempty"`
-	Traffic              *int64      `tfsdk:"traffic" json:"traffic,omitempty"`
-	InboundNetworkSpeed  *int64      `tfsdk:"inbound_network_speed" json:"networkSpeedInbound,omitempty"`
-	OutboundNetworkSpeed *int64      `tfsdk:"outbound_network_speed" json:"networkSpeedOutbound,omitempty"`
-	StorageProfile       *int64      `tfsdk:"storage_profile" json:"storageProfile,omitempty"`
-	NetworkProfile       *int64      `tfsdk:"network_profile" json:"networkProfile,omitempty"`
-	Id                   types.Int64 `tfsdk:"id" json:"id"`
+	PackageId         *int64      `tfsdk:"package_id" json:"packageId,omitempty"`
+	UserId            *int64      `tfsdk:"user_id" json:"userId,omitempty"`
+	HypervisorId      *int64      `tfsdk:"hypervisor_id" json:"hypervisorId,omitempty"`
+	HypervisorGroupId *int64      `tfsdk:"hypervisor_group_id" json:"hypervisorGroupId,omitempty"`
+	Ipv4              *int64      `tfsdk:"ipv4" json:"ipv4,omitempty"`
+	Storage           *int64      `tfsdk:"storage" json:"storage,omitempty"`
+	Memory            *int64      `tfsdk:"memory" json:"memory,omitempty"`
+	Cores             *int64      `tfsdk:"cores" json:"cpuCores,omitempty"`
+	Traffic           *int64      `tfsdk:"traffic" json:"traffic,omitempty"`
+	InboundNet        *int64      `tfsdk:"inbound_network_speed" json:"networkSpeedInbound,omitempty"`
+	OutboundNet       *int64      `tfsdk:"outbound_network_speed" json:"networkSpeedOutbound,omitempty"`
+	StorageProfile    *int64      `tfsdk:"storage_profile" json:"storageProfile,omitempty"`
+	NetworkProfile    *int64      `tfsdk:"network_profile" json:"networkProfile,omitempty"`
+	Id                types.Int64 `tfsdk:"id" json:"id"`
 }
 
 func (r *VirtfusionServerResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -57,34 +57,33 @@ func (r *VirtfusionServerResource) Metadata(ctx context.Context, req resource.Me
 
 func (r *VirtfusionServerResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Virtfusion Server Resource",
+		MarkdownDescription: "VirtFusion Server Resource",
 
 		Attributes: map[string]schema.Attribute{
 			"package_id": schema.Int64Attribute{
-				MarkdownDescription: "Package ID",
-				Required:            true,
+				MarkdownDescription: "Package ID. Defaults from provider-level `resource_package` if omitted.",
+				Optional:            true,
 			},
 			"user_id": schema.Int64Attribute{
-				MarkdownDescription: "User ID",
+				MarkdownDescription: "User ID.",
 				Required:            true,
 			},
 			"hypervisor_id": schema.Int64Attribute{
-				MarkdownDescription: "Specific Hypervisor ID to place the server on. Optional — conflicts with hypervisor_group_id.",
+				MarkdownDescription: "Specific Hypervisor ID to place the server on. Conflicts with hypervisor_group_id.",
 				Optional:            true,
 				Validators: []validator.Int64{
 					int64validator.ConflictsWith(path.MatchRoot("hypervisor_group_id")),
 				},
 			},
 			"hypervisor_group_id": schema.Int64Attribute{
-				MarkdownDescription: "Hypervisor Group (location) ID. Optional — conflicts with hypervisor_id. If both omitted, VirtFusion auto-places based on the package asset group.",
+				MarkdownDescription: "Hypervisor Group (location) ID. Defaults from provider-level `hypervisor_group` if omitted.",
 				Optional:            true,
 				Validators: []validator.Int64{
 					int64validator.ConflictsWith(path.MatchRoot("hypervisor_id")),
 				},
 			},
-
 			"ipv4": schema.Int64Attribute{
-				MarkdownDescription: "IPv4 addresses to assign. Default = 1.",
+				MarkdownDescription: "IPv4 addresses to assign. Defaults from provider-level `public_ips` if omitted.",
 				Optional:            true,
 				Computed:            true,
 				Default:             int64default.StaticInt64(1),
@@ -102,23 +101,23 @@ func (r *VirtfusionServerResource) Schema(ctx context.Context, req resource.Sche
 				Optional:            true,
 			},
 			"traffic": schema.Int64Attribute{
-				MarkdownDescription: "Traffic in GB. 0 = unlimited. Omit for package default.",
+				MarkdownDescription: "Traffic in GB. 0 = unlimited.",
 				Optional:            true,
 			},
 			"inbound_network_speed": schema.Int64Attribute{
-				MarkdownDescription: "Inbound network speed (kB/s). Omit for package default.",
+				MarkdownDescription: "Inbound network speed (kB/s).",
 				Optional:            true,
 			},
 			"outbound_network_speed": schema.Int64Attribute{
-				MarkdownDescription: "Outbound network speed (kB/s). Omit for package default.",
+				MarkdownDescription: "Outbound network speed (kB/s).",
 				Optional:            true,
 			},
 			"storage_profile": schema.Int64Attribute{
-				MarkdownDescription: "Storage profile ID. Omit for package default.",
+				MarkdownDescription: "Storage profile ID.",
 				Optional:            true,
 			},
 			"network_profile": schema.Int64Attribute{
-				MarkdownDescription: "Network profile ID. Omit for package default.",
+				MarkdownDescription: "Network profile ID.",
 				Optional:            true,
 			},
 			"id": schema.Int64Attribute{
@@ -151,10 +150,12 @@ func (r *VirtfusionServerResource) Create(ctx context.Context, req resource.Crea
 		return
 	}
 
-	// Build request dynamically: only include hypervisor fields if provided.
+	// Build request dynamically
 	createReq := map[string]interface{}{
-		"packageId": data.PackageId,
-		"userId":    data.UserId,
+		"userId": data.UserId,
+	}
+	if data.PackageId != nil {
+		createReq["packageId"] = data.PackageId
 	}
 	if data.HypervisorId != nil {
 		createReq["hypervisorId"] = data.HypervisorId
@@ -177,11 +178,11 @@ func (r *VirtfusionServerResource) Create(ctx context.Context, req resource.Crea
 	if data.Cores != nil {
 		createReq["cpuCores"] = data.Cores
 	}
-	if data.InboundNetworkSpeed != nil {
-		createReq["networkSpeedInbound"] = data.InboundNetworkSpeed
+	if data.InboundNet != nil {
+		createReq["networkSpeedInbound"] = data.InboundNet
 	}
-	if data.OutboundNetworkSpeed != nil {
-		createReq["networkSpeedOutbound"] = data.OutboundNetworkSpeed
+	if data.OutboundNet != nil {
+		createReq["networkSpeedOutbound"] = data.OutboundNet
 	}
 	if data.StorageProfile != nil {
 		createReq["storageProfile"] = data.StorageProfile
