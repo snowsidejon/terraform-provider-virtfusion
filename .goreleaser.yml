@@ -7,7 +7,7 @@ before:
     - go mod tidy
 
 builds:
-  - id: terraform-provider-virtfusion
+  - id: virtfusion
     main: .
     binary: terraform-provider-virtfusion
     goos:
@@ -17,36 +17,29 @@ builds:
     goarch:
       - amd64
       - arm64
-    ldflags:
-      - "-s -w -X main.version={{.Version}}"
 
 archives:
-  - id: default
+  - id: archive
+    builds:
+      - virtfusion
     format: zip
     name_template: "{{ .ProjectName }}_v{{ .Version }}_{{ .Os }}_{{ .Arch }}"
-    files:
-      - LICENSE
-      - README.md
 
 checksum:
   name_template: "{{ .ProjectName }}_v{{ .Version }}_SHA256SUMS"
 
 signs:
   - artifacts: checksum
-    cmd: gpg
     args:
       - "--batch"
       - "--yes"
       - "--pinentry-mode"
       - "loopback"
-      - "--passphrase"
-      - "{{ .Env.GPG_PASSPHRASE }}"
-      - "-u"
+      - "--passphrase-file"
+      - ".gpg_passphrase"
+      - "--local-user"
       - "{{ .Env.GPG_FINGERPRINT }}"
       - "--output"
       - "${signature}"
       - "--detach-sign"
       - "${artifact}"
-
-changelog:
-  use: git
