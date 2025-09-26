@@ -34,7 +34,6 @@ signs:
     args:
       [
         "--batch",
-        "--yes",
         "--pinentry-mode", "loopback",
         "--passphrase-file", ".gpg_passphrase",
         "--armor",
