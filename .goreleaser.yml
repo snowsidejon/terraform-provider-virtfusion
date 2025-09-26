@@ -35,13 +35,12 @@ signs:
         "--batch",
         "--yes",
         "--local-user", "485EB74C6A039FC89BE5359DE3A58B345981499F",
-        "--armor",
-        "--output", "${signature}",
         "--detach-sign", "${artifact}"
       ]
     artifacts: checksum
     signature: "${artifact}.sig"
     output: true
+
 
 release:
   github:
