@@ -34,8 +34,6 @@ signs:
     args:
       [
         "--batch",
-        "--pinentry-mode", "loopback",
-        "--passphrase-file", ".gpg_passphrase",
         "--armor",
         "--output", "${signature}",
         "--detach-sign", "${artifact}"
@@ -43,6 +41,7 @@ signs:
     artifacts: checksum
     signature: "${artifact}.sig"
     output: true
+
 
 changelog:
   sort: asc
