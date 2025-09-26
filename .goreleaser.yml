@@ -1,5 +1,3 @@
-version: 2
-
 project_name: terraform-provider-virtfusion
 
 before:
@@ -7,9 +5,9 @@ before:
     - go mod tidy
 
 builds:
-  - id: virtfusion
+  - id: terraform-provider-virtfusion
     main: .
-    binary: terraform-provider-virtfusion
+    binary: "{{ .ProjectName }}"
     goos:
       - linux
       - windows
@@ -17,29 +15,39 @@ builds:
     goarch:
       - amd64
       - arm64
+    flags:
+      - -trimpath
+    ldflags:
+      - "-s -w -X main.version={{ .Version }} -X main.commit={{ .Commit }}"
 
 archives:
-  - id: archive
-    builds:
-      - virtfusion
-    format: zip
-    name_template: "{{ .ProjectName }}_v{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+  - format: zip
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - none*
 
 checksum:
-  name_template: "{{ .ProjectName }}_v{{ .Version }}_SHA256SUMS"
+  name_template: "{{ .ProjectName }}_{{ .Version }}_SHA256SUMS"
 
 signs:
   - cmd: gpg
     args:
-      - "--batch"
-      - "--yes"
-      - "--pinentry-mode"
-      - "loopback"
-      - "--passphrase-file"
-      - ".gpg_passphrase"
-      - "--local-user"
-      - "{{ .Env.GPG_FINGERPRINT }}"
-      - "--output"
-      - "${signature}"
-      - "--detach-sign"
-      - "${artifact}"
+      [
+        "--batch",
+        "--yes",
+        "--pinentry-mode", "loopback",
+        "--passphrase-file", ".gpg_passphrase",
+        "--armor",
+        "--output", "${signature}",
+        "--detach-sign", "${artifact}"
+      ]
+    artifacts: checksum
+    signature: "${artifact}.sig"
+    output: true
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
