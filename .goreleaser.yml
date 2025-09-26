@@ -7,7 +7,8 @@ before:
 builds:
   - id: terraform-provider-virtfusion
     main: .
-    binary: terraform-provider-virtfusion
+    # Binary inside the archive should include the leading "v"
+    binary: terraform-provider-virtfusion_v{{ .Version }}
     goos:
       - linux
       - windows
@@ -18,11 +19,13 @@ builds:
 
 archives:
   - format: zip
-    name_template: "{{ .ProjectName }}_v{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    # Archive filename must NOT include the leading "v"
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     files:
       - none*
 
 checksum:
+  # Checksums filename must NOT include the leading "v" (already correct)
   name_template: "terraform-provider-virtfusion_{{ .Version }}_SHA256SUMS"
 
 signs:
