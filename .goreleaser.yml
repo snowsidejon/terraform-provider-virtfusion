@@ -7,7 +7,7 @@ before:
 builds:
   - id: terraform-provider-virtfusion
     main: .
-    binary: "{{ .ProjectName }}"
+    binary: terraform-provider-virtfusion
     goos:
       - linux
       - windows
@@ -15,19 +15,15 @@ builds:
     goarch:
       - amd64
       - arm64
-    flags:
-      - -trimpath
-    ldflags:
-      - "-s -w -X main.version={{ .Version }} -X main.commit={{ .Commit }}"
 
 archives:
   - format: zip
-    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    name_template: "{{ .ProjectName }}_v{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     files:
       - none*
 
 checksum:
-  name_template: "{{ .ProjectName }}_{{ .Version }}_SHA256SUMS"
+  name_template: "terraform-provider-virtfusion_{{ .Version }}_SHA256SUMS"
 
 signs:
   - cmd: gpg
@@ -35,8 +31,7 @@ signs:
       [
         "--batch",
         "--yes",
-        "--pinentry-mode", "loopback",
-        "--passphrase", "",
+        "--local-user", "485EB74C6A039FC89BE5359DE3A58B345981499F",
         "--armor",
         "--output", "${signature}",
         "--detach-sign", "${artifact}"
@@ -45,12 +40,7 @@ signs:
     signature: "${artifact}.sig"
     output: true
 
-
-
-
-changelog:
-  sort: asc
-  filters:
-    exclude:
-      - '^docs:'
-      - '^test:'
+release:
+  github:
+    owner: snowsidejon
+    name: terraform-provider-virtfusion
