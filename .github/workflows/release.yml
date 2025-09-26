@@ -21,6 +21,10 @@ jobs:
       - name: Import GPG key
         run: |
           echo "${{ secrets.GPG_PRIVATE_KEY }}" | gpg --batch --import
+        shell: bash
+
+      - name: Create passphrase file
+        run: |
           echo "${{ secrets.GPG_PASSPHRASE }}" > .gpg_passphrase
         shell: bash
 
@@ -32,5 +36,3 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GPG_FINGERPRINT: 4FAF6D1A177554B0
-          GPG_PASSPHRASE_FILE: .gpg_passphrase
