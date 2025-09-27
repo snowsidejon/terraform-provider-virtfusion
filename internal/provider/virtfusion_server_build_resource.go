@@ -1,6 +1,3 @@
-// Copyright (c) HashiCorp, Inc.
-// SPDX-License-Identifier: MPL-2.0
-
 package provider
 
 import (
@@ -8,89 +5,72 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"io/ioutil"
 	"net/http"
-	"os"
+	"strconv"
 
-	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-// Ensure provider defined types fully satisfy framework interfaces.
+// Ensure implementation
 var _ resource.Resource = &VirtfusionServerBuildResource{}
-var _ resource.ResourceWithImportState = &VirtfusionServerBuildResource{}
 
 func NewVirtfusionServerBuildResource() resource.Resource {
 	return &VirtfusionServerBuildResource{}
 }
 
-// VirtfusionServerBuildResource defines the resource implementation.
 type VirtfusionServerBuildResource struct {
 	client *http.Client
+	config *ProviderConfig
 }
 
 type VirtfusionServerBuildResourceModel struct {
-	ServerId int64   `tfsdk:"server_id"`
-	Name     string  `tfsdk:"name" json:"name"`
-	Hostname string  `tfsdk:"hostname" json:"hostname"`
-	Osid     int64   `tfsdk:"osid" json:"operatingSystemId"`
-	Vnc      bool    `tfsdk:"vnc" json:"vnc"`
-	Ipv6     bool    `tfsdk:"ipv6" json:"ipv6"`
-	SshKeys  []int64 `tfsdk:"ssh_keys" json:"sshKeys"`
-	Email    bool    `tfsdk:"email" json:"email"`
+	ID       types.Int64   `tfsdk:"id"`
+	ServerID types.Int64   `tfsdk:"server_id"`
+	Name     types.String  `tfsdk:"name"`
+	Hostname types.String  `tfsdk:"hostname"`
+	OsID     types.Int64   `tfsdk:"osid"`
+	VNC      types.Bool    `tfsdk:"vnc"`
+	IPv6     types.Bool    `tfsdk:"ipv6"`
+	SSHKeys  []types.Int64 `tfsdk:"ssh_keys"`
+	Email    types.Bool    `tfsdk:"email"`
 }
 
 func (r *VirtfusionServerBuildResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_build"
+	resp.TypeName = "virtfusion_build"
 }
 
 func (r *VirtfusionServerBuildResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "VirtFusion Server Build Resource. Creates and initializes a VM with OS, hostname, and SSH keys.",
-
 		Attributes: map[string]schema.Attribute{
+			"id": schema.Int64Attribute{
+				Computed: true,
+			},
 			"server_id": schema.Int64Attribute{
-				MarkdownDescription: "Server ID to build.",
-				Required:            true,
+				Required: true,
 			},
 			"name": schema.StringAttribute{
-				MarkdownDescription: "Display name for the server.",
-				Required:            true,
+				Required: true,
 			},
 			"hostname": schema.StringAttribute{
-				MarkdownDescription: "Hostname for the server.",
-				Optional:            true,
+				Required: true,
 			},
 			"osid": schema.Int64Attribute{
-				MarkdownDescription: "Operating system ID. If omitted, the provider will resolve from `os_template` default.",
-				Optional:            true,
+				Optional: true,
 			},
 			"vnc": schema.BoolAttribute{
-				MarkdownDescription: "Enable VNC access.",
-				Optional:            true,
-				Computed:            true,
-				Default:             booldefault.StaticBool(false),
+				Optional: true,
 			},
 			"ipv6": schema.BoolAttribute{
-				MarkdownDescription: "Enable IPv6 networking.",
-				Optional:            true,
-				Computed:            true,
-				Default:             booldefault.StaticBool(false),
+				Optional: true,
 			},
 			"ssh_keys": schema.ListAttribute{
-				MarkdownDescription: "List of SSH key IDs to provision on the VM.",
-				ElementType:         types.Int64Type,
-				Optional:            true,
+				ElementType: types.Int64Type,
+				Optional:    true,
 			},
 			"email": schema.BoolAttribute{
-				MarkdownDescription: "Send email on build completion.",
-				Optional:            true,
-				Computed:            true,
-				Default:             booldefault.StaticBool(false),
+				Optional: true,
 			},
 		},
 	}
@@ -101,16 +81,17 @@ func (r *VirtfusionServerBuildResource) Configure(ctx context.Context, req resou
 		return
 	}
 
-	client, ok := req.ProviderData.(*http.Client)
-	if !ok {
+	config, ok := req.ProviderData.(*ProviderConfig)
+	if !ok || config == nil {
 		resp.Diagnostics.AddError(
-			"Unexpected Resource Configure Type",
-			fmt.Sprintf("Expected *http.Client, got: %T", req.ProviderData),
+			"Unexpected Provider Data",
+			fmt.Sprintf("Expected *ProviderConfig, got: %T", req.ProviderData),
 		)
 		return
 	}
 
-	r.client = client
+	r.client = config.Client
+	r.config = config
 }
 
 func (r *VirtfusionServerBuildResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -120,54 +101,61 @@ func (r *VirtfusionServerBuildResource) Create(ctx context.Context, req resource
 		return
 	}
 
-	// If no osid is provided, try to resolve it from provider os_template default.
-	if data.Osid == 0 {
-		osid, err := r.lookupDefaultOS()
+	// If no osid provided, try to resolve from provider default OsTemplate
+	if data.OsID.IsNull() && r.config.OsTemplate != "" {
+		osid, err := resolveOsTemplateToID(r.client, r.config.Endpoint, r.config.ApiToken, r.config.OsTemplate)
 		if err != nil {
-			resp.Diagnostics.AddError("OS Lookup Failed", err.Error())
+			resp.Diagnostics.AddError("OS Template Resolution Failed", err.Error())
 			return
 		}
-		data.Osid = osid
+		data.OsID = types.Int64Value(osid)
 	}
 
-	createReq := VirtfusionServerBuildResourceModel{
-		Name:     data.Name,
-		Hostname: data.Hostname,
-		Osid:     data.Osid,
-		Vnc:      data.Vnc,
-		Ipv6:     data.Ipv6,
-		SshKeys:  data.SshKeys,
-		Email:    data.Email,
+	payload := map[string]interface{}{
+		"server_id": data.ServerID.ValueInt64(),
+		"name":      data.Name.ValueString(),
+		"hostname":  data.Hostname.ValueString(),
+		"osid":      data.OsID.ValueInt64(),
+		"vnc":       data.VNC.ValueBool(),
+		"ipv6":      data.IPv6.ValueBool(),
+		"ssh_keys":  flattenInt64List(data.SSHKeys),
+		"email":     data.Email.ValueBool(),
 	}
 
-	httpReqBody, err := json.Marshal(createReq)
+	body, _ := json.Marshal(payload)
+	reqURL := r.config.Endpoint + "/api/v1/build"
+
+	httpReq, err := http.NewRequest("POST", reqURL, bytes.NewBuffer(body))
 	if err != nil {
-		resp.Diagnostics.AddError("JSON Marshal Error", err.Error())
-		return
-	}
-
-	httpReq, err := http.NewRequest("POST", fmt.Sprintf("/servers/%d/build", data.ServerId), bytes.NewBuffer(httpReqBody))
-	if err != nil {
-		resp.Diagnostics.AddError("HTTP Request Error", err.Error())
+		resp.Diagnostics.AddError("Error creating request", err.Error())
 		return
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer "+r.config.ApiToken)
 
-	httpResponse, err := r.client.Do(httpReq)
+	httpResp, err := r.client.Do(httpReq)
 	if err != nil {
-		resp.Diagnostics.AddError("HTTP Execute Error", err.Error())
+		resp.Diagnostics.AddError("API request failed", err.Error())
 		return
 	}
-	defer httpResponse.Body.Close()
+	defer httpResp.Body.Close()
 
-	if httpResponse.StatusCode == 422 {
-		responseBody, _ := ioutil.ReadAll(httpResponse.Body)
-		resp.Diagnostics.AddError("Server Validation Error", string(responseBody))
+	if httpResp.StatusCode != 200 && httpResp.StatusCode != 201 {
+		resp.Diagnostics.AddError(
+			"Unexpected API Response",
+			fmt.Sprintf("Status: %d", httpResp.StatusCode),
+		)
 		return
 	}
-	if httpResponse.StatusCode != 200 {
-		resp.Diagnostics.AddError("Unexpected HTTP Status", httpResponse.Status)
+
+	var respData map[string]interface{}
+	if err := json.NewDecoder(httpResp.Body).Decode(&respData); err != nil {
+		resp.Diagnostics.AddError("Error decoding API response", err.Error())
 		return
+	}
+
+	if id, ok := respData["id"].(float64); ok {
+		data.ID = types.Int64Value(int64(id))
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
@@ -179,6 +167,27 @@ func (r *VirtfusionServerBuildResource) Read(ctx context.Context, req resource.R
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	reqURL := r.config.Endpoint + "/api/v1/build/" + strconv.FormatInt(data.ID.ValueInt64(), 10)
+	httpReq, _ := http.NewRequest("GET", reqURL, nil)
+	httpReq.Header.Set("Authorization", "Bearer "+r.config.ApiToken)
+
+	httpResp, err := r.client.Do(httpReq)
+	if err != nil {
+		resp.Diagnostics.AddError("API request failed", err.Error())
+		return
+	}
+	defer httpResp.Body.Close()
+
+	if httpResp.StatusCode == 404 {
+		resp.State.RemoveResource(ctx)
+		return
+	}
+	if httpResp.StatusCode != 200 {
+		resp.Diagnostics.AddError("Unexpected API Response", fmt.Sprintf("Status: %d", httpResp.StatusCode))
+		return
+	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -188,6 +197,35 @@ func (r *VirtfusionServerBuildResource) Update(ctx context.Context, req resource
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	reqURL := r.config.Endpoint + "/api/v1/build/" + strconv.FormatInt(data.ID.ValueInt64(), 10)
+	payload := map[string]interface{}{
+		"name":     data.Name.ValueString(),
+		"hostname": data.Hostname.ValueString(),
+		"osid":     data.OsID.ValueInt64(),
+		"vnc":      data.VNC.ValueBool(),
+		"ipv6":     data.IPv6.ValueBool(),
+		"ssh_keys": flattenInt64List(data.SSHKeys),
+		"email":    data.Email.ValueBool(),
+	}
+
+	body, _ := json.Marshal(payload)
+	httpReq, _ := http.NewRequest("PUT", reqURL, bytes.NewBuffer(body))
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer "+r.config.ApiToken)
+
+	httpResp, err := r.client.Do(httpReq)
+	if err != nil {
+		resp.Diagnostics.AddError("API request failed", err.Error())
+		return
+	}
+	defer httpResp.Body.Close()
+
+	if httpResp.StatusCode != 200 {
+		resp.Diagnostics.AddError("Unexpected API Response", fmt.Sprintf("Status: %d", httpResp.StatusCode))
+		return
+	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -197,54 +235,63 @@ func (r *VirtfusionServerBuildResource) Delete(ctx context.Context, req resource
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	// Nothing to delete — build is a one-time operation.
-	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+
+	reqURL := r.config.Endpoint + "/api/v1/build/" + strconv.FormatInt(data.ID.ValueInt64(), 10)
+	httpReq, _ := http.NewRequest("DELETE", reqURL, nil)
+	httpReq.Header.Set("Authorization", "Bearer "+r.config.ApiToken)
+
+	httpResp, err := r.client.Do(httpReq)
+	if err != nil {
+		resp.Diagnostics.AddError("API request failed", err.Error())
+		return
+	}
+	defer httpResp.Body.Close()
+
+	if httpResp.StatusCode != 200 && httpResp.StatusCode != 204 {
+		resp.Diagnostics.AddError("Unexpected API Response", fmt.Sprintf("Status: %d", httpResp.StatusCode))
+		return
+	}
 }
 
-func (r *VirtfusionServerBuildResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
-}
+// resolveOsTemplateToID resolves a template name to its numeric ID via API
+func resolveOsTemplateToID(client *http.Client, endpoint, apiToken, templateName string) (int64, error) {
+	reqURL := endpoint + "/api/v1/os-templates"
+	httpReq, _ := http.NewRequest("GET", reqURL, nil)
+	httpReq.Header.Set("Authorization", "Bearer "+apiToken)
 
-// lookupDefaultOS resolves the provider's default os_template string into an OS ID.
-// For now, this does a simple GET to /operating-systems and matches by name.
-func (r *VirtfusionServerBuildResource) lookupDefaultOS() (int64, error) {
-	httpReq, err := http.NewRequest("GET", "/operating-systems", nil)
+	httpResp, err := client.Do(httpReq)
 	if err != nil {
-		return 0, fmt.Errorf("failed to create OS lookup request: %s", err)
+		return 0, err
+	}
+	defer httpResp.Body.Close()
+
+	if httpResp.StatusCode != 200 {
+		return 0, fmt.Errorf("unexpected status %d while fetching OS templates", httpResp.StatusCode)
 	}
 
-	httpResponse, err := r.client.Do(httpReq)
-	if err != nil {
-		return 0, fmt.Errorf("failed to execute OS lookup request: %s", err)
-	}
-	defer httpResponse.Body.Close()
-
-	if httpResponse.StatusCode != 200 {
-		return 0, fmt.Errorf("unexpected status during OS lookup: %s", httpResponse.Status)
+	var respData []map[string]interface{}
+	if err := json.NewDecoder(httpResp.Body).Decode(&respData); err != nil {
+		return 0, err
 	}
 
-	var response struct {
-		Data []struct {
-			Id   int64  `json:"id"`
-			Name string `json:"name"`
-		} `json:"data"`
-	}
-	body, _ := io.ReadAll(httpResponse.Body)
-	if err := json.Unmarshal(body, &response); err != nil {
-		return 0, fmt.Errorf("failed to parse OS lookup response: %s", err)
-	}
-
-	// Default template comes from provider env (VIRTFUSION_OS_TEMPLATE) or fallback
-	defaultTemplate := os.Getenv("VIRTFUSION_OS_TEMPLATE")
-	if defaultTemplate == "" {
-		defaultTemplate = "Ubuntu Server 22.04"
-	}
-
-	for _, osInfo := range response.Data {
-		if osInfo.Name == defaultTemplate {
-			return osInfo.Id, nil
+	for _, tpl := range respData {
+		if tpl["name"] == templateName {
+			if id, ok := tpl["id"].(float64); ok {
+				return int64(id), nil
+			}
 		}
 	}
 
-	return 0, fmt.Errorf("default OS template %q not found", defaultTemplate)
+	return 0, fmt.Errorf("OS template %q not found", templateName)
+}
+
+// helper to convert []types.Int64 → []int64
+func flattenInt64List(list []types.Int64) []int64 {
+	var result []int64
+	for _, v := range list {
+		if !v.IsNull() {
+			result = append(result, v.ValueInt64())
+		}
+	}
+	return result
 }

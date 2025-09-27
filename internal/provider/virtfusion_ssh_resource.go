@@ -1,6 +1,3 @@
-// Copyright (c) HashiCorp, Inc.
-// SPDX-License-Identifier: MPL-2.0
-
 package provider
 
 import (
@@ -8,60 +5,51 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
+	"strconv"
 
-	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-// Ensure provider defined types fully satisfy framework interfaces.
+// Ensure implementation
 var _ resource.Resource = &VirtfusionSSHResource{}
-var _ resource.ResourceWithImportState = &VirtfusionSSHResource{}
 
 func NewVirtfusionSSHResource() resource.Resource {
 	return &VirtfusionSSHResource{}
 }
 
-// VirtfusionSSHResource defines the resource implementation.
 type VirtfusionSSHResource struct {
 	client *http.Client
+	config *ProviderConfig
 }
 
-// VirtfusionSSHResourceModel describes the resource data model.
 type VirtfusionSSHResourceModel struct {
-	UserId    *int64      `tfsdk:"user_id" json:"userId"`
-	Name      *string     `tfsdk:"name" json:"name"`
-	PublicKey *string     `tfsdk:"public_key" json:"publicKey"`
-	Id        types.Int64 `tfsdk:"id" json:"id,omitempty"`
+	ID        types.Int64  `tfsdk:"id"`
+	UserID    types.Int64  `tfsdk:"user_id"`
+	Name      types.String `tfsdk:"name"`
+	PublicKey types.String `tfsdk:"public_key"`
 }
 
 func (r *VirtfusionSSHResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_ssh"
+	resp.TypeName = "virtfusion_ssh"
 }
 
 func (r *VirtfusionSSHResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "VirtFusion SSH Key Resource",
-
 		Attributes: map[string]schema.Attribute{
+			"id": schema.Int64Attribute{
+				Computed: true,
+			},
 			"user_id": schema.Int64Attribute{
-				MarkdownDescription: "User ID to associate the key with.",
-				Required:            true,
+				Required: true,
 			},
 			"name": schema.StringAttribute{
-				MarkdownDescription: "Friendly name for the SSH key.",
-				Required:            true,
+				Required: true,
 			},
 			"public_key": schema.StringAttribute{
-				MarkdownDescription: "Public key string (e.g. ssh-ed25519 ...).",
-				Required:            true,
-			},
-			"id": schema.Int64Attribute{
-				MarkdownDescription: "SSH key ID in VirtFusion.",
-				Computed:            true,
+				Required: true,
 			},
 		},
 	}
@@ -71,15 +59,18 @@ func (r *VirtfusionSSHResource) Configure(ctx context.Context, req resource.Conf
 	if req.ProviderData == nil {
 		return
 	}
-	client, ok := req.ProviderData.(*http.Client)
-	if !ok {
+
+	config, ok := req.ProviderData.(*ProviderConfig)
+	if !ok || config == nil {
 		resp.Diagnostics.AddError(
-			"Unexpected Resource Configure Type",
-			fmt.Sprintf("Expected *http.Client, got: %T", req.ProviderData),
+			"Unexpected Provider Data",
+			fmt.Sprintf("Expected *ProviderConfig, got: %T", req.ProviderData),
 		)
 		return
 	}
-	r.client = client
+
+	r.client = config.Client
+	r.config = config
 }
 
 func (r *VirtfusionSSHResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -89,42 +80,47 @@ func (r *VirtfusionSSHResource) Create(ctx context.Context, req resource.CreateR
 		return
 	}
 
-	httpReqBody, err := json.Marshal(data)
+	payload := map[string]interface{}{
+		"user_id":    data.UserID.ValueInt64(),
+		"name":       data.Name.ValueString(),
+		"public_key": data.PublicKey.ValueString(),
+	}
+
+	body, _ := json.Marshal(payload)
+	reqURL := r.config.Endpoint + "/api/v1/ssh-keys"
+
+	httpReq, err := http.NewRequest("POST", reqURL, bytes.NewBuffer(body))
 	if err != nil {
-		resp.Diagnostics.AddError("Marshal Error", err.Error())
+		resp.Diagnostics.AddError("Error creating request", err.Error())
 		return
 	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer "+r.config.ApiToken)
 
-	httpReq, err := r.client.Post("/ssh_keys", "application/json", bytes.NewBuffer(httpReqBody))
+	httpResp, err := r.client.Do(httpReq)
 	if err != nil {
-		resp.Diagnostics.AddError("HTTP Request Error", err.Error())
+		resp.Diagnostics.AddError("API request failed", err.Error())
 		return
 	}
-	defer httpReq.Body.Close()
+	defer httpResp.Body.Close()
 
-	if httpReq.StatusCode == 422 {
-		body, _ := io.ReadAll(httpReq.Body)
-		resp.Diagnostics.AddError("Validation Error", string(body))
-		return
-	}
-	if httpReq.StatusCode != 201 {
-		resp.Diagnostics.AddError("Unexpected HTTP Status", httpReq.Status)
+	if httpResp.StatusCode != 200 && httpResp.StatusCode != 201 {
+		resp.Diagnostics.AddError(
+			"Unexpected API Response",
+			fmt.Sprintf("Status: %d", httpResp.StatusCode),
+		)
 		return
 	}
 
-	var response struct {
-		Data struct {
-			Id   int64  `json:"id"`
-			Name string `json:"name"`
-		} `json:"data"`
-	}
-	if err := json.NewDecoder(httpReq.Body).Decode(&response); err != nil {
-		resp.Diagnostics.AddError("Decode Error", err.Error())
+	var respData map[string]interface{}
+	if err := json.NewDecoder(httpResp.Body).Decode(&respData); err != nil {
+		resp.Diagnostics.AddError("Error decoding API response", err.Error())
 		return
 	}
 
-	data.Id = types.Int64Value(response.Data.Id)
-	data.Name = &response.Data.Name
+	if id, ok := respData["id"].(float64); ok {
+		data.ID = types.Int64Value(int64(id))
+	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
@@ -136,42 +132,25 @@ func (r *VirtfusionSSHResource) Read(ctx context.Context, req resource.ReadReque
 		return
 	}
 
-	httpReq, err := http.NewRequest("GET", fmt.Sprintf("/ssh_keys/%d", data.Id.ValueInt64()), nil)
+	reqURL := r.config.Endpoint + "/api/v1/ssh-keys/" + strconv.FormatInt(data.ID.ValueInt64(), 10)
+	httpReq, _ := http.NewRequest("GET", reqURL, nil)
+	httpReq.Header.Set("Authorization", "Bearer "+r.config.ApiToken)
+
+	httpResp, err := r.client.Do(httpReq)
 	if err != nil {
-		resp.Diagnostics.AddError("Request Error", err.Error())
+		resp.Diagnostics.AddError("API request failed", err.Error())
 		return
 	}
+	defer httpResp.Body.Close()
 
-	httpResponse, err := r.client.Do(httpReq)
-	if err != nil {
-		resp.Diagnostics.AddError("Execute Error", err.Error())
-		return
-	}
-	defer httpResponse.Body.Close()
-
-	if httpResponse.StatusCode == 404 {
-		// Key no longer exists
+	if httpResp.StatusCode == 404 {
 		resp.State.RemoveResource(ctx)
 		return
 	}
-	if httpResponse.StatusCode != 200 {
-		resp.Diagnostics.AddError("Unexpected HTTP Status", httpResponse.Status)
+	if httpResp.StatusCode != 200 {
+		resp.Diagnostics.AddError("Unexpected API Response", fmt.Sprintf("Status: %d", httpResp.StatusCode))
 		return
 	}
-
-	var response struct {
-		Data struct {
-			Id   int64  `json:"id"`
-			Name string `json:"name"`
-		} `json:"data"`
-	}
-	if err := json.NewDecoder(httpResponse.Body).Decode(&response); err != nil {
-		resp.Diagnostics.AddError("Decode Error", err.Error())
-		return
-	}
-
-	data.Id = types.Int64Value(response.Data.Id)
-	data.Name = &response.Data.Name
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
@@ -183,7 +162,29 @@ func (r *VirtfusionSSHResource) Update(ctx context.Context, req resource.UpdateR
 		return
 	}
 
-	// No-op for now — SSH keys in VirtFusion are immutable except for delete/create.
+	reqURL := r.config.Endpoint + "/api/v1/ssh-keys/" + strconv.FormatInt(data.ID.ValueInt64(), 10)
+	payload := map[string]interface{}{
+		"name":       data.Name.ValueString(),
+		"public_key": data.PublicKey.ValueString(),
+	}
+
+	body, _ := json.Marshal(payload)
+	httpReq, _ := http.NewRequest("PUT", reqURL, bytes.NewBuffer(body))
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer "+r.config.ApiToken)
+
+	httpResp, err := r.client.Do(httpReq)
+	if err != nil {
+		resp.Diagnostics.AddError("API request failed", err.Error())
+		return
+	}
+	defer httpResp.Body.Close()
+
+	if httpResp.StatusCode != 200 {
+		resp.Diagnostics.AddError("Unexpected API Response", fmt.Sprintf("Status: %d", httpResp.StatusCode))
+		return
+	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -194,26 +195,19 @@ func (r *VirtfusionSSHResource) Delete(ctx context.Context, req resource.DeleteR
 		return
 	}
 
-	httpReq, err := http.NewRequest("DELETE", fmt.Sprintf("/ssh_keys/%d", data.Id.ValueInt64()), nil)
+	reqURL := r.config.Endpoint + "/api/v1/ssh-keys/" + strconv.FormatInt(data.ID.ValueInt64(), 10)
+	httpReq, _ := http.NewRequest("DELETE", reqURL, nil)
+	httpReq.Header.Set("Authorization", "Bearer "+r.config.ApiToken)
+
+	httpResp, err := r.client.Do(httpReq)
 	if err != nil {
-		resp.Diagnostics.AddError("Request Error", err.Error())
+		resp.Diagnostics.AddError("API request failed", err.Error())
 		return
 	}
-	httpReq.Header.Set("Content-Type", "application/json")
+	defer httpResp.Body.Close()
 
-	httpResponse, err := r.client.Do(httpReq)
-	if err != nil {
-		resp.Diagnostics.AddError("Execute Error", err.Error())
+	if httpResp.StatusCode != 200 && httpResp.StatusCode != 204 {
+		resp.Diagnostics.AddError("Unexpected API Response", fmt.Sprintf("Status: %d", httpResp.StatusCode))
 		return
 	}
-	defer httpResponse.Body.Close()
-
-	if httpResponse.StatusCode != 204 {
-		resp.Diagnostics.AddError("Delete Failed", httpResponse.Status)
-		return
-	}
-}
-
-func (r *VirtfusionSSHResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }

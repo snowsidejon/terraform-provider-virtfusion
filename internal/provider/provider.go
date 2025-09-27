@@ -18,16 +18,27 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-// Ensure VirtfusionProvider satisfies various provider interfaces.
+// Ensure VirtfusionProvider satisfies provider.Provider interface
 var _ provider.Provider = &VirtfusionProvider{}
 
-// VirtfusionProvider defines the provider implementation.
+// VirtfusionProvider implements the provider.
 type VirtfusionProvider struct {
-	// version is set at release time.
 	version string
 }
 
-// VirtfusionProviderModel describes the provider data model.
+// ProviderConfig is shared with resources and data sources.
+type ProviderConfig struct {
+	Client          *http.Client
+	Endpoint        string
+	ApiToken        string
+	OsTemplate      string
+	ResourcePackage int64
+	PublicIPs       int64
+	PrivateIPs      int64
+	HypervisorGroup int64
+}
+
+// VirtfusionProviderModel describes the provider schema.
 type VirtfusionProviderModel struct {
 	Endpoint        types.String `tfsdk:"endpoint"`
 	ApiToken        types.String `tfsdk:"api_token"`
@@ -47,32 +58,32 @@ func (p *VirtfusionProvider) Schema(ctx context.Context, req provider.SchemaRequ
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
 			"endpoint": schema.StringAttribute{
-				MarkdownDescription: "The endpoint to use for API requests. Defaults to https://cloud.breezehost.io",
+				MarkdownDescription: "VirtFusion API endpoint (default: cloud.breezehost.io).",
 				Optional:            true,
 			},
 			"api_token": schema.StringAttribute{
-				MarkdownDescription: "The API token to use for API requests.",
+				MarkdownDescription: "API token for authentication.",
 				Optional:            true,
 				Sensitive:           true,
 			},
 			"os_template": schema.StringAttribute{
-				MarkdownDescription: "The OS template to deploy. Defaults to Ubuntu Server 22.04.",
+				MarkdownDescription: "Default OS template name (default: Ubuntu Server 22.04).",
 				Optional:            true,
 			},
 			"resource_package": schema.Int64Attribute{
-				MarkdownDescription: "Resource package ID (RAM/CPU/Disk plan).",
+				MarkdownDescription: "Default resource package ID.",
 				Optional:            true,
 			},
 			"public_ips": schema.Int64Attribute{
-				MarkdownDescription: "Number of public IPs to assign (default: 1).",
+				MarkdownDescription: "Default number of public IPs (default: 1).",
 				Optional:            true,
 			},
 			"private_ips": schema.Int64Attribute{
-				MarkdownDescription: "Number of private IPs to assign (default: 0).",
+				MarkdownDescription: "Default number of private IPs (default: 0).",
 				Optional:            true,
 			},
 			"hypervisor_group": schema.Int64Attribute{
-				MarkdownDescription: "Hypervisor group (location) ID to deploy into.",
+				MarkdownDescription: "Default hypervisor group ID (location).",
 				Optional:            true,
 			},
 		},
@@ -86,16 +97,16 @@ func (p *VirtfusionProvider) Configure(ctx context.Context, req provider.Configu
 		return
 	}
 
-	// Pull from env first
+	// Environment defaults
 	apiToken := os.Getenv("VIRTFUSION_API_TOKEN")
 	endpoint := os.Getenv("VIRTFUSION_ENDPOINT")
 	osTemplate := os.Getenv("VIRTFUSION_OS_TEMPLATE")
-	resourcePackage := os.Getenv("VIRTFUSION_RESOURCE_PACKAGE")
-	publicIPs := os.Getenv("VIRTFUSION_PUBLIC_IPS")
-	privateIPs := os.Getenv("VIRTFUSION_PRIVATE_IPS")
-	hypervisorGroup := os.Getenv("VIRTFUSION_HYPERVISOR_GROUP")
+	resourcePackage := int64(0)
+	publicIPs := int64(1)
+	privateIPs := int64(0)
+	hypervisorGroup := int64(1)
 
-	// Override from config block if set
+	// Override from config
 	if !data.Endpoint.IsNull() {
 		endpoint = data.Endpoint.ValueString()
 	}
@@ -115,34 +126,41 @@ func (p *VirtfusionProvider) Configure(ctx context.Context, req provider.Configu
 	}
 
 	if !data.ResourcePackage.IsNull() {
-		resourcePackage = strconv.FormatInt(data.ResourcePackage.ValueInt64(), 10)
+		resourcePackage = data.ResourcePackage.ValueInt64()
+	} else if env := os.Getenv("VIRTFUSION_RESOURCE_PACKAGE"); env != "" {
+		if v, err := strconv.ParseInt(env, 10, 64); err == nil {
+			resourcePackage = v
+		}
 	}
 
 	if !data.PublicIPs.IsNull() {
-		publicIPs = strconv.FormatInt(data.PublicIPs.ValueInt64(), 10)
-	}
-	if publicIPs == "" {
-		publicIPs = "1"
+		publicIPs = data.PublicIPs.ValueInt64()
+	} else if env := os.Getenv("VIRTFUSION_PUBLIC_IPS"); env != "" {
+		if v, err := strconv.ParseInt(env, 10, 64); err == nil {
+			publicIPs = v
+		}
 	}
 
 	if !data.PrivateIPs.IsNull() {
-		privateIPs = strconv.FormatInt(data.PrivateIPs.ValueInt64(), 10)
-	}
-	if privateIPs == "" {
-		privateIPs = "0"
+		privateIPs = data.PrivateIPs.ValueInt64()
+	} else if env := os.Getenv("VIRTFUSION_PRIVATE_IPS"); env != "" {
+		if v, err := strconv.ParseInt(env, 10, 64); err == nil {
+			privateIPs = v
+		}
 	}
 
 	if !data.HypervisorGroup.IsNull() {
-		hypervisorGroup = strconv.FormatInt(data.HypervisorGroup.ValueInt64(), 10)
-	}
-	if hypervisorGroup == "" {
-		hypervisorGroup = "1"
+		hypervisorGroup = data.HypervisorGroup.ValueInt64()
+	} else if env := os.Getenv("VIRTFUSION_HYPERVISOR_GROUP"); env != "" {
+		if v, err := strconv.ParseInt(env, 10, 64); err == nil {
+			hypervisorGroup = v
+		}
 	}
 
 	if apiToken == "" {
 		resp.Diagnostics.AddError(
 			"Missing API Token",
-			"No API token provided via VIRTFUSION_API_TOKEN or provider config.",
+			"No API token provided via config or VIRTFUSION_API_TOKEN env var.",
 		)
 		return
 	}
@@ -153,12 +171,22 @@ func (p *VirtfusionProvider) Configure(ctx context.Context, req provider.Configu
 		BaseURL:   &url.URL{Scheme: "https", Host: endpoint, Path: "/api/v1"},
 		Token:     apiToken,
 	}
-
 	client := &http.Client{Transport: customTransport}
 
-	// Pass client to resources and datasources
-	resp.DataSourceData = client
-	resp.ResourceData = client
+	// Share provider config with resources
+	config := &ProviderConfig{
+		Client:          client,
+		Endpoint:        endpoint,
+		ApiToken:        apiToken,
+		OsTemplate:      osTemplate,
+		ResourcePackage: resourcePackage,
+		PublicIPs:       publicIPs,
+		PrivateIPs:      privateIPs,
+		HypervisorGroup: hypervisorGroup,
+	}
+
+	resp.DataSourceData = config
+	resp.ResourceData = config
 }
 
 func (p *VirtfusionProvider) Resources(ctx context.Context) []func() resource.Resource {
@@ -170,9 +198,7 @@ func (p *VirtfusionProvider) Resources(ctx context.Context) []func() resource.Re
 }
 
 func (p *VirtfusionProvider) DataSources(ctx context.Context) []func() datasource.DataSource {
-	return []func() datasource.DataSource{
-		// add datasources here (e.g. templates, hypervisors)
-	}
+	return []func() datasource.DataSource{}
 }
 
 type CustomTransport struct {
@@ -191,8 +217,6 @@ func (c *CustomTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 
 func New(version string) func() provider.Provider {
 	return func() provider.Provider {
-		return &VirtfusionProvider{
-			version: version,
-		}
+		return &VirtfusionProvider{version: version}
 	}
 }
